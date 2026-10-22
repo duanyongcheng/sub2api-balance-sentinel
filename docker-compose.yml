@@ -1,0 +1,72 @@
+services:
+  sentinel:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: sub2api-balance-sentinel:latest
+    container_name: sub2api-balance-sentinel
+    restart: unless-stopped
+    # Longer than the application drain deadline, even with 120s upstream timeouts.
+    stop_grace_period: 5m
+
+    # The application only writes the mounted ledger volume. Keeping the image
+    # filesystem read-only limits the blast radius of a web or dependency bug.
+    read_only: true
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,nodev,size=16m
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+
+    # SECURITY: bind to the host loopback only. This container holds a
+    # full-admin sub2api API key. Publishing on 0.0.0.0 exposes its privileged
+    # authentication surface to the network. Use HTTPS plus network access
+    # controls for remote access; MFA does not replace network isolation.
+    #
+    # To use a different host port, set SENTINEL_PORT in .env (or the shell).
+    ports:
+      - "127.0.0.1:${SENTINEL_PORT:-7788}:7788"
+
+    env_file:
+      - .env
+
+    environment:
+      # Overrides that must hold inside the container regardless of .env:
+      #  - listen on all interfaces (the port mapping above is the boundary)
+      #  - keep the ledger on the mounted volume
+      HOST: 0.0.0.0
+      PORT: 7788
+      SENTINEL_DB_PATH: /data/sentinel.db
+      # The browser sends the *published* host port in the Host header, so the
+      # app must accept it or it will reject every request.
+      PUBLISHED_PORTS: ${SENTINEL_PORT:-7788}
+
+    volumes:
+      - sentinel-data:/data
+
+    healthcheck:
+      test:
+        - CMD
+        - node
+        - -e
+        - "fetch('http://127.0.0.1:'+(process.env.PORT||7788)+'/healthz').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
+      interval: 30s
+      timeout: 5s
+      start_period: 10s
+      retries: 3
+
+    # Modest limits: this is a small poller, not a heavy service.
+    deploy:
+      resources:
+        limits:
+          memory: 256M
+
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+volumes:
+  sentinel-data:

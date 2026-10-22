@@ -1,0 +1,10 @@
+services:
+  sentinel:
+    networks:
+      - default
+      - proxy
+
+networks:
+  proxy:
+    external: true
+    name: ${SENTINEL_PROXY_NETWORK:-npm_default}

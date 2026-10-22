@@ -1,0 +1,17 @@
+{
+  "started_at": "2026-10-21T21:17:52.261576+00:00",
+  "source_commit": "378984d87f2b68db15626ae8f18b9e923ab82b85",
+  "scope": "disposable-local-source-instance",
+  "passed": false,
+  "cleanup_complete": true,
+  "source_image_id": "sha256:28b031191c49ea2eb36219f3d44b47018a3f54cc1661afb3e5a3627f3e0565c7",
+  "probe_image_id": "sha256:c5f4e8de05d840aa00a12f3fb39092e4c4bba94b28b85524865fcde75fafd0cc",
+  "dependency_images": {
+    "postgres:18-alpine": "sha256:d7a8005067f55a2f8ea369e767545fd467b1943a4f0f1a48b7dc44f06c366109",
+    "redis:8-alpine": "sha256:675f7644831d85995868250485bf7a71970257f74da31c62969a868d3f3eff2e"
+  },
+  "error": "isolated API readiness timeout; no upstream logs emitted",
+  "api_failure_state": "exited/1/false",
+  "api_log_indicators": [],
+  "finished_at": "2026-10-21T21:20:10.831754+00:00"
+}

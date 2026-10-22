@@ -1,0 +1,10 @@
+node_modules/
+.npm-cache/
+web/dist/
+data/
+secrets/
+.env
+.env.*
+!.env.example
+*.log
+.DS_Store

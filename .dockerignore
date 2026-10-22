@@ -1,0 +1,15 @@
+# Keep build context small and make sure secrets never enter the image.
+node_modules
+.git
+.gitignore
+.npm-cache
+.env
+.env.*
+!.env.example
+web/dist
+data
+**/secrets
+*.log
+.DS_Store
+.chrome-tmp
+scripts/integration

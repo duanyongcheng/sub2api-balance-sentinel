@@ -1,0 +1,57 @@
+{
+  "started_at": "2026-10-21T21:29:09.813139+00:00",
+  "source_commit": "378984d87f2b68db15626ae8f18b9e923ab82b85",
+  "scope": "disposable-local-source-instance",
+  "passed": true,
+  "cleanup_complete": true,
+  "source_image_id": "sha256:28b031191c49ea2eb36219f3d44b47018a3f54cc1661afb3e5a3627f3e0565c7",
+  "probe_image_id": "sha256:3ddc84d6369feaf2e17f3c113a35b82f90eb4af938b29df2e7788d2eb61aea7b",
+  "dependency_images": {
+    "postgres:18-alpine": "sha256:d7a8005067f55a2f8ea369e767545fd467b1943a4f0f1a48b7dc44f06c366109",
+    "redis:8-alpine": "sha256:675f7644831d85995868250485bf7a71970257f74da31c62969a868d3f3eff2e"
+  },
+  "compliance_guard_http_status": 423,
+  "compliance_fixture": "synthetic disposable DB row; no human acknowledgement or production change",
+  "checks": [
+    {
+      "name": "create and read synthetic users through administrator API",
+      "passed": true
+    },
+    {
+      "name": "fixed automatic credit, whitelist and repeated polling",
+      "passed": true,
+      "before": 5,
+      "amount": 100,
+      "after": 105
+    },
+    {
+      "name": "same-key same-payload replay is deduplicated",
+      "passed": true,
+      "replayHeader": true,
+      "afterReplay": 105
+    },
+    {
+      "name": "real balance-history exact match and one-time local receipt accounting",
+      "passed": true
+    },
+    {
+      "name": "approval is required and cannot be spent twice",
+      "passed": true
+    },
+    {
+      "name": "real credit followed by response loss stays unknown, blocks retry, and resolves without resending",
+      "passed": true,
+      "before": 5,
+      "amount": 10,
+      "after": 15,
+      "upstreamWriteRequests": 1,
+      "responsesDropped": 1
+    },
+    {
+      "name": "ledger and reconciliation evidence survive reopening SQLite",
+      "passed": true,
+      "ledgerRecords": 3
+    }
+  ],
+  "finished_at": "2026-10-21T21:29:28.196203+00:00"
+}

@@ -1,0 +1,13 @@
+# Optional MFA-secret mount. Password-only mode uses docker-compose.yml alone.
+services:
+  sentinel:
+    environment:
+      SENTINEL_ACCOUNT_KEY: ""
+      SENTINEL_ACCOUNT_KEY_FILE: /run/secrets/account-key
+    volumes:
+      - type: bind
+        source: ${SENTINEL_ACCOUNT_KEY_PATH:-./secrets/account-key}
+        target: /run/secrets/account-key
+        read_only: true
+        bind:
+          create_host_path: false

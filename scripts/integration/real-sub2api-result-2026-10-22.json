@@ -1,0 +1,14 @@
+{
+  "started_at": "2026-10-21T21:05:32.410041+00:00",
+  "source_commit": "378984d87f2b68db15626ae8f18b9e923ab82b85",
+  "scope": "disposable-local-source-instance",
+  "passed": false,
+  "cleanup_complete": true,
+  "source_image_id": "sha256:28b031191c49ea2eb36219f3d44b47018a3f54cc1661afb3e5a3627f3e0565c7",
+  "dependency_images": {
+    "postgres:18-alpine": "sha256:d7a8005067f55a2f8ea369e767545fd467b1943a4f0f1a48b7dc44f06c366109",
+    "redis:8-alpine": "sha256:675f7644831d85995868250485bf7a71970257f74da31c62969a868d3f3eff2e"
+  },
+  "error": "docker port failed (exit 1); raw output withheld",
+  "finished_at": "2026-10-21T21:13:57.991715+00:00"
+}
