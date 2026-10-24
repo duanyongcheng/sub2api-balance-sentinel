@@ -52,9 +52,9 @@ function mockSub2Api() {
   };
 }
 
-function tempStore() {
+function tempStore(baseUrl = 'https://fixture.invalid') {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'sentinel-approval-'));
-  return createStore(openDb(path.join(dir, 'test.db')));
+  return createStore(openDb(path.join(dir, 'test.db')), { instance: { baseUrl } });
 }
 
 const quiet = { log() {}, warn() {}, error() {} };
@@ -66,7 +66,7 @@ function makeMonitor(store, base, notifier = null) {
 test('approval mode creates a proposal and writes nothing', async () => {
   const mock = mockSub2Api();
   const base = await mock.start();
-  const store = tempStore();
+  const store = tempStore(base);
   mock.users.set(1, { id: 1, email: 'a@example.com', balance: 5 });
   store.upsertUser({ userId: 1, email: 'a@example.com', threshold: 20, amount: 100, mode: 'approval' });
 
@@ -85,7 +85,7 @@ test('approval mode creates a proposal and writes nothing', async () => {
 test('refreshing a monitored user identity does not downgrade approval mode', async () => {
   const mock = mockSub2Api();
   const base = await mock.start();
-  const store = tempStore();
+  const store = tempStore(base);
   mock.users.set(1, { id: 1, email: 'new@example.com', balance: 5 });
   store.upsertUser({ userId: 1, email: 'old@example.com', threshold: 20, amount: 100, mode: 'approval' });
 
@@ -100,7 +100,7 @@ test('refreshing a monitored user identity does not downgrade approval mode', as
 test('repeated ticks do not stack duplicate proposals', async () => {
   const mock = mockSub2Api();
   const base = await mock.start();
-  const store = tempStore();
+  const store = tempStore(base);
   mock.users.set(1, { id: 1, email: 'a@example.com', balance: 5 });
   store.upsertUser({ userId: 1, email: 'a@example.com', threshold: 20, amount: 100, mode: 'approval' });
 
@@ -116,7 +116,7 @@ test('repeated ticks do not stack duplicate proposals', async () => {
 test('approving a proposal performs the top-up and records before/after', async () => {
   const mock = mockSub2Api();
   const base = await mock.start();
-  const store = tempStore();
+  const store = tempStore(base);
   mock.users.set(1, { id: 1, email: 'a@example.com', balance: 5 });
   store.upsertUser({ userId: 1, email: 'a@example.com', threshold: 20, amount: 100, mode: 'approval' });
 
@@ -140,7 +140,7 @@ test('approving a proposal performs the top-up and records before/after', async 
 test('a proposal cannot be approved twice', async () => {
   const mock = mockSub2Api();
   const base = await mock.start();
-  const store = tempStore();
+  const store = tempStore(base);
   mock.users.set(1, { id: 1, email: 'a@example.com', balance: 5 });
   store.upsertUser({ userId: 1, email: 'a@example.com', threshold: 20, amount: 100, mode: 'approval' });
 
@@ -157,7 +157,7 @@ test('a proposal cannot be approved twice', async () => {
 test('approving a stale proposal expires it instead of charging', async () => {
   const mock = mockSub2Api();
   const base = await mock.start();
-  const store = tempStore();
+  const store = tempStore(base);
   mock.users.set(1, { id: 1, email: 'a@example.com', balance: 5 });
   store.upsertUser({ userId: 1, email: 'a@example.com', threshold: 20, amount: 100, mode: 'approval' });
 
@@ -179,7 +179,7 @@ test('approving a stale proposal expires it instead of charging', async () => {
 test('a pending proposal is closed when the balance recovers on its own', async () => {
   const mock = mockSub2Api();
   const base = await mock.start();
-  const store = tempStore();
+  const store = tempStore(base);
   mock.users.set(1, { id: 1, email: 'a@example.com', balance: 5 });
   store.upsertUser({ userId: 1, email: 'a@example.com', threshold: 20, amount: 100, mode: 'approval' });
 
@@ -197,7 +197,7 @@ test('a pending proposal is closed when the balance recovers on its own', async 
 test('rejecting a proposal writes nothing', async () => {
   const mock = mockSub2Api();
   const base = await mock.start();
-  const store = tempStore();
+  const store = tempStore(base);
   mock.users.set(1, { id: 1, email: 'a@example.com', balance: 5 });
   store.upsertUser({ userId: 1, email: 'a@example.com', threshold: 20, amount: 100, mode: 'approval' });
 
@@ -255,7 +255,7 @@ test('a broken notification endpoint never throws', async () => {
 test('top-up still succeeds when notifications fail', async () => {
   const mock = mockSub2Api();
   const base = await mock.start();
-  const store = tempStore();
+  const store = tempStore(base);
   mock.users.set(1, { id: 1, email: 'a@example.com', balance: 5 });
   store.upsertUser({ userId: 1, email: 'a@example.com', threshold: 20, amount: 100 });
 

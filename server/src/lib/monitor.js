@@ -2,6 +2,7 @@ import crypto from 'node:crypto';
 import { config, notifyOn } from '../config.js';
 import { Sub2ApiClient, Sub2ApiError } from './sub2api.js';
 import { decideTopUp, checkGuards, startOfTodayIso, money } from './logic.js';
+import { InstanceBindingError } from './instance.js';
 
 const KILL_SWITCH_KEY = 'kill_switch';
 
@@ -9,6 +10,7 @@ export class Monitor {
   constructor({ store, client = new Sub2ApiClient(), logger = console, notifier = null }) {
     this.store = store;
     this.client = client;
+    this.store.ensureInstanceBinding(client);
     this.logger = logger;
     this.notifier = notifier;
     // Which notification categories are enabled (from NOTIFY_ON).
@@ -104,7 +106,7 @@ export class Monitor {
       const u = await this.readUser(user.user_id);
       // Identity refresh must never restore deleted users or overwrite rules
       // changed by an operator while the upstream read was in flight.
-      this.store.updateUserIdentity(user.user_id, u.email, u.username);
+      this.store.updateUserIdentity(user.user_id, u.email, u.username, this.client);
       return u;
     } catch (err) {
       if (err instanceof Sub2ApiError && err.httpStatus === 404) {
@@ -116,7 +118,9 @@ export class Monitor {
 
   async readUser(userId) {
     try {
+      this.store.assertInstanceBinding(this.client);
       const user = await this.client.getUser(userId);
+      this.store.assertInstanceBinding(this.client);
       this.observations.set(userId, { balance: user.balance, observedAt: new Date().toISOString(), failed: false });
       return user;
     } catch (err) {
@@ -200,7 +204,7 @@ export class Monitor {
    */
   proposeTopUp({ userId, email, balance, threshold, amount, ruleRevision }) {
     const id = `proposal-${userId}-${crypto.randomUUID()}`;
-    const proposal = this.store.createProposal({ id, userId, email, balance, threshold, amount, ruleRevision });
+    const proposal = this.store.createProposal({ id, userId, email, balance, threshold, amount, ruleRevision, instance: this.client });
     if (!proposal || proposal.id !== id) return proposal;
     this.store.log('warn', 'proposal_created',
       `user ${userId}: balance ${balance} < threshold ${threshold}; waiting for approval to add ${amount}`, userId);
@@ -228,6 +232,8 @@ export class Monitor {
    */
   async performTopUp({ userId, email, balanceBefore, threshold, amount, source, ruleRevision, proposalId, authorizeActor, actor = (source === 'auto' ? 'system' : 'operator') }) {
     if (this.stopping) return { ok: false, attempted: false, reason: 'service is shutting down' };
+    const binding = this.store.instanceBindingStatus(this.client);
+    if (!binding.ok) return { ok: false, attempted: false, reason: binding.reason };
     const id = Number(userId);
     if (!Number.isInteger(id) || id <= 0) {
       return { ok: false, attempted: false, reason: 'invalid user, balance, threshold, or amount' };
@@ -245,6 +251,9 @@ export class Monitor {
       acquired = this.store.acquireTopupLock(id, lockToken, staleBefore);
       if (!acquired) return { ok: false, attempted: false, reason: 'another top-up for this user is already in progress' };
       return await this.#performTopUp({ userId: id, email, balanceBefore, threshold, amount, source, actor, ruleRevision, proposalId, lockToken, authorizeActor });
+    } catch (err) {
+      if (err instanceof InstanceBindingError) return { ok: false, attempted: false, reason: err.message };
+      throw err;
     } finally {
       if (acquired) this.store.releaseTopupLock(id, lockToken);
       releaseMemory();
@@ -254,6 +263,8 @@ export class Monitor {
 
   authorizeTopUp({ userId, threshold, amount, source, ruleRevision, proposalId, lockToken, authorizeActor }, checkLimits = false) {
     if (this.stopping) return { ok: false, reason: 'service is shutting down' };
+    const binding = this.store.instanceBindingStatus(this.client);
+    if (!binding.ok) return { ok: false, invalidated: true, reason: binding.reason };
     if (authorizeActor && !authorizeActor()) return { ok: false, invalidated: true, reason: 'operator authorization changed' };
     if (!config.monitor.autoTopUpEnabled) return { ok: false, reason: 'auto top-up disabled by configuration' };
     if (this.isKillSwitchOn()) return { ok: false, reason: 'kill switch engaged' };
@@ -336,7 +347,8 @@ export class Monitor {
       source,
       actor,
       proposalId,
-      providerOrigin: this.client.baseUrl ? new URL(this.client.baseUrl).origin : null,
+      providerOrigin: this.store.assertInstanceBinding(this.client).baseUrl,
+      instance: this.client,
     }, () => this.authorizeTopUp(intent, true));
     if (!reservation.ok) return this.blockTopUp(userId, reservation, actor);
     this.store.log('info', 'topup_started',
@@ -431,6 +443,8 @@ export class Monitor {
    */
   async approveProposal(proposalId, actor = 'operator', authorizeActor = null) {
     if (this.stopping) return { ok: false, attempted: false, reason: 'service is shutting down' };
+    const binding = this.store.instanceBindingStatus(this.client);
+    if (!binding.ok) return { ok: false, attempted: false, reason: binding.reason };
     if (authorizeActor && !authorizeActor()) return { ok: false, attempted: false, reason: 'operator authorization changed' };
     const proposal = this.store.getProposal(proposalId);
     if (!proposal) return { ok: false, reason: 'proposal not found' };
@@ -461,7 +475,11 @@ export class Monitor {
     }
 
     // Mark decided BEFORE writing, so a crash cannot leave it re-approvable.
-    const claimed = this.store.claimProposal(proposal.id);
+    let claimed;
+    try { claimed = this.store.claimProposal(proposal.id, this.client, authorizeActor); } catch (err) {
+      if (err instanceof InstanceBindingError) return { ok: false, attempted: false, reason: err.message };
+      throw err;
+    }
     if (!claimed) return { ok: false, reason: 'proposal was decided concurrently' };
 
     const outcome = await this.performTopUp({

@@ -32,7 +32,7 @@ async function bounded(promise, ms = 5000) {
 function fixture(t, { mode = 'auto', notifier = null } = {}) {
   const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'sentinel-shutdown-'));
   const db = openDb(path.join(directory, 'ledger.db'));
-  const store = createStore(db);
+  const store = createStore(db, { instance: { baseUrl: 'http://127.0.0.1:8080' } });
   store.upsertUser({ userId: 1, email: 'test@example.invalid', threshold: 20, amount: 100, mode });
   const state = { balance: 5, writes: 0, reads: [] };
   const client = {
@@ -238,7 +238,8 @@ test('real SIGTERM during a background HTTP credit persists the final result and
   fs.writeFileSync(path.join(directory, 'package.json'), '{"type":"module"}');
   const file = path.join(directory, 'ledger.db');
   const seeded = openDb(file);
-  for (const userId of [1, 2]) createStore(seeded).upsertUser({ userId, threshold: 20, amount: 100 });
+  const seededStore = createStore(seeded, { instance: { baseUrl: `http://127.0.0.1:${upstream.address().port}` } });
+  for (const userId of [1, 2]) seededStore.upsertUser({ userId, threshold: 20, amount: 100 });
   seeded.close();
   const env = Object.fromEntries(['PATH', 'HOME', 'TMPDIR', 'SystemRoot'].filter((key) => process.env[key]).map((key) => [key, process.env[key]]));
   Object.assign(env, {

@@ -49,9 +49,14 @@ export const api = {
   users: () => fetch('/api/users').then(handle),
   addUser: (body) => fetch('/api/users', { method: 'POST', headers: jsonHeaders(), credentials: 'same-origin', body: JSON.stringify(body) }).then(handle),
   updateUser: (id, body) => fetch(`/api/users/${id}`, { method: 'PATCH', headers: jsonHeaders(), credentials: 'same-origin', body: JSON.stringify(body) }).then(handle),
-  removeUser: (id) => fetch(`/api/users/${id}`, { method: 'DELETE', headers: jsonHeaders(), credentials: 'same-origin' }).then(handle),
+  removeUser: (id, ruleRevision) => fetch(`/api/users/${id}`, { method: 'DELETE', headers: jsonHeaders(), credentials: 'same-origin', body: JSON.stringify({ ruleRevision }) }).then(handle),
   topUp: (id, amount) => fetch(`/api/users/${id}/topup`, { method: 'POST', headers: jsonHeaders(), credentials: 'same-origin', body: JSON.stringify({ amount }) }).then(handle),
-  records: (userId) => fetch(`/api/records${userId ? `?userId=${userId}` : ''}`).then(handle),
+  records: ({ userId, status, limit = 50, offset = 0 } = {}, { signal } = {}) => {
+    const query = new URLSearchParams({ limit: String(limit), offset: String(offset) });
+    if (userId) query.set('userId', String(userId));
+    if (status) query.set('status', status);
+    return fetch(`/api/records?${query}`, { signal, credentials: 'same-origin' }).then(handle);
+  },
   reconcile: (id, note) => fetch(`/api/records/${id}/reconcile`, { method: 'POST', headers: jsonHeaders(), credentials: 'same-origin', body: JSON.stringify({ note }) }).then(handle),
   verifyRecord: (id) => fetch(`/api/records/${encodeURIComponent(id)}/verify`, { method: 'POST', headers: jsonHeaders(), credentials: 'same-origin', body: '{}' }).then(handle),
   recordChecks: (id) => fetch(`/api/records/${encodeURIComponent(id)}/checks`).then(handle),

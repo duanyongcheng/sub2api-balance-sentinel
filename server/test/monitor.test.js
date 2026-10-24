@@ -90,9 +90,9 @@ function mockSub2Api({ failMode = null } = {}) {
   };
 }
 
-function tempStore() {
+function tempStore(baseUrl = 'https://fixture.invalid') {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'sentinel-'));
-  return createStore(openDb(path.join(dir, 'test.db')));
+  return createStore(openDb(path.join(dir, 'test.db')), { instance: { baseUrl } });
 }
 
 function quietMonitor(store, client) {
@@ -102,7 +102,7 @@ function quietMonitor(store, client) {
 test('tops up a low-balance user and records before/after', async () => {
   const mock = mockSub2Api();
   const base = await mock.start();
-  const store = tempStore();
+  const store = tempStore(base);
   mock.users.set(1, { id: 1, email: 'a@example.com', balance: 5 });
 
   store.upsertUser({ userId: 1, email: 'a@example.com', threshold: 20, amount: 100 });
@@ -123,7 +123,7 @@ test('upstream compliance guard blocks polling without reserving or sending a cr
   const base = await mock.start();
   const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'sentinel-compliance-'));
   const db = openDb(path.join(directory, 'ledger.db'));
-  const store = createStore(db);
+  const store = createStore(db, { instance: { baseUrl: base } });
   t.after(async () => {
     await mock.stop();
     db.close();
@@ -145,7 +145,7 @@ test('upstream compliance guard blocks polling without reserving or sending a cr
 test('does not top up a user above the threshold', async () => {
   const mock = mockSub2Api();
   const base = await mock.start();
-  const store = tempStore();
+  const store = tempStore(base);
   mock.users.set(1, { id: 1, email: 'a@example.com', balance: 50 });
   store.upsertUser({ userId: 1, email: 'a@example.com', threshold: 20, amount: 100 });
 
@@ -158,7 +158,7 @@ test('does not top up a user above the threshold', async () => {
 test('only touches whitelisted users', async () => {
   const mock = mockSub2Api();
   const base = await mock.start();
-  const store = tempStore();
+  const store = tempStore(base);
   mock.users.set(1, { id: 1, email: 'monitored@example.com', balance: 0 });
   mock.users.set(2, { id: 2, email: 'stranger@example.com', balance: 0 });
   store.upsertUser({ userId: 1, email: 'monitored@example.com', threshold: 20, amount: 100 });
@@ -172,7 +172,7 @@ test('only touches whitelisted users', async () => {
 test('a second tick does not double top-up', async () => {
   const mock = mockSub2Api();
   const base = await mock.start();
-  const store = tempStore();
+  const store = tempStore(base);
   mock.users.set(1, { id: 1, email: 'a@example.com', balance: 5 });
   store.upsertUser({ userId: 1, email: 'a@example.com', threshold: 20, amount: 100 });
 
@@ -191,8 +191,8 @@ test('concurrent monitors serialize per-user credits across SQLite connections',
   const dbFile = path.join(dir, 'shared.db');
   const dbA = openDb(dbFile);
   const dbB = openDb(dbFile);
-  const storeA = createStore(dbA);
-  const storeB = createStore(dbB);
+  const storeA = createStore(dbA, { instance: { baseUrl: base } });
+  const storeB = createStore(dbB, { instance: { baseUrl: base } });
   mock.users.set(1, { id: 1, email: 'a@example.com', balance: 5 });
   storeA.upsertUser({ userId: 1, email: 'a@example.com', threshold: 20, amount: 100 });
   const client = new Sub2ApiClient({ baseUrl: base, adminKey: 'admin-testkey' });
@@ -217,6 +217,7 @@ test('the circuit breaker persists across Monitor instances and restarts', async
   let reads = 0;
   let writes = 0;
   const client = {
+    baseUrl: 'https://fixture.invalid',
     async getUser(id) { reads += 1; return { id, email: `u${id}@example.com`, balance: 1 }; },
     async addBalance() { writes += 1; throw new Sub2ApiError('rejected', { kind: 'rejected', httpStatus: 400 }); },
   };
@@ -250,8 +251,8 @@ test('cross-user concurrent credits cannot exceed the global daily amount cap', 
   const dbFile = path.join(dir, 'shared.db');
   const dbA = openDb(dbFile);
   const dbB = openDb(dbFile);
-  const storeA = createStore(dbA);
-  const storeB = createStore(dbB);
+  const storeA = createStore(dbA, { instance: { baseUrl: base } });
+  const storeB = createStore(dbB, { instance: { baseUrl: base } });
   mock.users.set(1, { id: 1, email: 'a@example.com', balance: 1 });
   mock.users.set(2, { id: 2, email: 'b@example.com', balance: 1 });
   storeA.upsertUser({ userId: 1, email: 'a@example.com', threshold: 10, amount: 100 });
@@ -277,7 +278,7 @@ test('cross-user concurrent credits cannot exceed the global daily amount cap', 
 test('per-user daily cap stops repeated top-ups', async () => {
   const mock = mockSub2Api();
   const base = await mock.start();
-  const store = tempStore();
+  const store = tempStore(base);
   // User keeps spending, so balance returns below threshold each time.
   mock.users.set(1, { id: 1, email: 'a@example.com', balance: 1 });
   store.upsertUser({ userId: 1, email: 'a@example.com', threshold: 20, amount: 100 });
@@ -295,7 +296,7 @@ test('per-user daily cap stops repeated top-ups', async () => {
 test('an unknown outcome is recorded as unknown and not retried', async () => {
   const mock = mockSub2Api({ failMode: 'apply-then-500' });
   const base = await mock.start();
-  const store = tempStore();
+  const store = tempStore(base);
   mock.users.set(1, { id: 1, email: 'a@example.com', balance: 5 });
   store.upsertUser({ userId: 1, email: 'a@example.com', threshold: 20, amount: 100 });
 
@@ -314,7 +315,7 @@ test('an unknown outcome is recorded as unknown and not retried', async () => {
 test('kill switch blocks writes entirely', async () => {
   const mock = mockSub2Api();
   const base = await mock.start();
-  const store = tempStore();
+  const store = tempStore(base);
   mock.users.set(1, { id: 1, email: 'a@example.com', balance: 0 });
   store.upsertUser({ userId: 1, email: 'a@example.com', threshold: 20, amount: 100 });
 
@@ -329,7 +330,7 @@ test('kill switch blocks writes entirely', async () => {
 test('ledger records what is owed, and reconciliation clears it', async () => {
   const mock = mockSub2Api();
   const base = await mock.start();
-  const store = tempStore();
+  const store = tempStore(base);
   mock.users.set(1, { id: 1, email: 'a@example.com', balance: 0 });
   store.upsertUser({ userId: 1, email: 'a@example.com', threshold: 20, amount: 100 });
 
@@ -356,7 +357,7 @@ test('a 200 HTML write response creates no receivable and blocks the next credit
   const mock = mockSub2Api({ failMode: 'html-200' });
   const base = await mock.start();
   t.after(() => mock.stop());
-  const store = tempStore();
+  const store = tempStore(base);
   mock.users.set(1, { id: 1, email: 'a@example.com', balance: 5 });
   store.upsertUser({ userId: 1, email: 'a@example.com', threshold: 20, amount: 100 });
   const monitor = quietMonitor(store, new Sub2ApiClient({ baseUrl: base, adminKey: 'admin-testkey' }));

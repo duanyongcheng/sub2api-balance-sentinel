@@ -31,7 +31,7 @@ const positional = argv.slice(1).filter((a) => !a.startsWith('--'));
 
 function flagValue(name, fallback) {
   const hit = argv.find((a) => a.startsWith(`--${name}=`));
-  return hit ? hit.split('=')[1] : fallback;
+  return hit ? hit.slice(name.length + 3) : fallback;
 }
 
 function table(rows, columns) {
@@ -48,7 +48,9 @@ function usage() {
   tick --dry-run               decide only, print what *would* happen
   users                        list monitored users
   add <id> <threshold> <amount> [--mode=approval]
-  remove <id>
+  remove <id> --revision=<rule_revision>
+  bind-instance --confirm=<full-canonical-base-url>
+                               confirm a legacy unbound ledger in observe-only mode
   records [--limit=N]
   owed                         unreconciled totals per user
   proposals                    pending approval requests
@@ -71,8 +73,8 @@ try {
 }
 
 const db = openDb(config.dbPath);
-const store = createStore(db);
 const client = new Sub2ApiClient();
+const store = createStore(db, { instance: client });
 const notifier = new Notifier({ store });
 const monitor = new Monitor({ store, client, notifier });
 const reconciler = new Reconciler({ store, client });
@@ -84,7 +86,13 @@ main().catch((err) => {
 
 async function main() {
   switch (cmd) {
+    case 'bind-instance': {
+      store.confirmInstanceBinding(client, { writesEnabled: config.monitor.autoTopUpEnabled, confirmation: flagValue('confirm') });
+      console.log('ledger instance confirmed; no upstream request sent');
+      break;
+    }
     case 'tick': {
+      store.assertInstanceBinding(client);
       const dryRun = flags.has('--dry-run');
       const users = store.enabledUsers();
       let exitCode = 0;
@@ -93,7 +101,9 @@ async function main() {
       for (const user of users) {
         let fresh;
         try {
+          store.assertInstanceBinding(client);
           fresh = await client.getUser(user.user_id);
+          store.assertInstanceBinding(client);
         } catch (err) {
           console.log(`  ! user ${user.user_id}: cannot read balance (${err.message})`);
           exitCode = Math.max(exitCode, 2);
@@ -158,6 +168,7 @@ async function main() {
         { label: 'AMOUNT', get: (r) => r.amount },
         { label: 'MODE', get: (r) => r.mode },
         { label: 'ON', get: (r) => (r.enabled ? 'yes' : 'no') },
+        { label: 'REVISION', get: (r) => r.rule_revision },
         { label: 'TODAY', get: (r) => r.today },
       ]));
       break;
@@ -170,12 +181,16 @@ async function main() {
       const amount = Number(amtRaw);
       const mode = flagValue('mode', 'auto');
       if (!Number.isInteger(id) || id <= 0) throw new Error('user id must be a positive integer');
-      if (!(threshold > 0)) throw new Error('threshold must be > 0');
-      if (!(amount > 0)) throw new Error('amount must be > 0');
+      if (!Number.isFinite(threshold) || !(threshold > 0)) throw new Error('threshold must be finite and > 0');
+      if (!Number.isFinite(amount) || !(amount > 0)) throw new Error('amount must be finite and > 0');
       if (amount > config.guard.maxTopUpAmountPerEvent) throw new Error(`amount exceeds guard cap ${config.guard.maxTopUpAmountPerEvent}`);
       if (!['auto', 'approval'].includes(mode)) throw new Error("--mode must be 'auto' or 'approval'");
+      store.assertInstanceBinding(client);
+      if (store.getUser(id)) throw new Error('user already monitored; edit its rule in the dashboard instead of adding it again');
       const fresh = await client.getUser(id);
-      const row = store.upsertUser({ userId: id, email: fresh.email, threshold, amount, mode, enabled: true });
+      const result = store.createUser({ userId: id, email: fresh.email, threshold, amount, mode, enabled: true }, { instance: client });
+      if (!result.ok) throw new Error(result.reason);
+      const row = result.user;
       store.log('info', 'user_added', `CLI: monitoring user ${id} (${fresh.email}) threshold=${threshold} amount=${amount} mode=${mode}`, id, 'cli');
       console.log(`monitoring #${id} ${fresh.email}: below ${threshold} -> add ${amount} (mode: ${row.mode})`);
       break;
@@ -183,7 +198,10 @@ async function main() {
 
     case 'remove': {
       const id = Number(positional[0]);
-      if (!store.deleteUser(id)) throw new Error(`user ${id} is not monitored`);
+      if (!Number.isInteger(id) || id <= 0) throw new Error('user id must be a positive integer');
+      if (!flagValue('revision')) throw new Error('--revision=<rule_revision> is required; use the dashboard to obtain it');
+      const result = store.removeUser(id, flagValue('revision'), { instance: client });
+      if (!result.ok) throw new Error(result.reason);
       store.log('info', 'user_removed', `CLI: stopped monitoring user ${id}`, id, 'cli');
       console.log(`stopped monitoring #${id}`);
       break;

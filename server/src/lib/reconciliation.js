@@ -1,6 +1,7 @@
 import crypto from 'node:crypto';
 import { config } from '../config.js';
 import { money } from './logic.js';
+import { compatibleRecordedTarget } from './instance.js';
 
 const PAGE_SIZE = 100;
 const MAX_PAGES = 10;
@@ -10,6 +11,7 @@ export class Reconciler {
   constructor({ store, client }) {
     this.store = store;
     this.client = client;
+    this.store.ensureInstanceBinding(client);
     this.running = new Set();
   }
 
@@ -36,11 +38,12 @@ export class Reconciler {
   }
 
   async inspect(record) {
-    const providerOrigin = this.client.baseUrl ? new URL(this.client.baseUrl).origin : null;
-    if (record.provider_origin && record.provider_origin !== providerOrigin) {
+    const binding = this.store.instanceBindingStatus(this.client);
+    const providerOrigin = binding.configured?.baseUrl ?? null;
+    if (!binding.ok || !compatibleRecordedTarget(record.provider_origin, binding.configured)) {
       return {
-        outcome: 'mismatch', summary: 'Configured Sub2API origin differs from the original attempt; no upstream query sent',
-        evidence: { recordedOrigin: record.provider_origin, currentOrigin: providerOrigin },
+        outcome: 'mismatch', summary: binding.reason || 'Configured Sub2API target differs from the original attempt; no upstream query sent',
+        evidence: { recordedOrigin: record.provider_origin, currentOrigin: providerOrigin, bindingStatus: binding.status },
       };
     }
     const entries = new Map();
@@ -51,6 +54,7 @@ export class Reconciler {
     let stable = true;
     for (let page = 1; page <= MAX_PAGES; page += 1) {
       const result = await this.client.getBalanceHistory(record.user_id, PAGE_SIZE, page);
+      this.store.assertInstanceBinding(this.client);
       // Defensive checks also apply to injected clients and future adapters.
       if (!Array.isArray(result?.items) || result.page !== page || result.page_size !== PAGE_SIZE ||
           !Number.isSafeInteger(result.pages) || result.pages < 1 || !Number.isSafeInteger(result.total) || result.total < 0 ||
@@ -114,6 +118,8 @@ export class Reconciler {
   }
 
   async resolveApplied(recordId, actor, authorizeActor = null) {
+    const binding = this.store.instanceBindingStatus(this.client);
+    if (!binding.ok) return { ok: false, reason: binding.reason };
     if (authorizeActor && !authorizeActor()) return { ok: false, reason: 'operator authorization changed' };
     const record = this.store.getTopup(recordId);
     if (!record || !['pending', 'unknown', 'failed'].includes(record.status)) return { ok: false, reason: 'record is not unresolved' };
@@ -130,7 +136,7 @@ export class Reconciler {
       if (verification.check.outcome !== 'matched') {
         return { ok: false, reason: 'upstream evidence does not prove this credit was applied', check: verification.check };
       }
-      return this.store.resolveApplied({ recordId, actor, lockToken: token, verificationId: verification.check.id }, authorizeActor);
+      return this.store.resolveApplied({ recordId, actor, lockToken: token, verificationId: verification.check.id, instance: this.client }, authorizeActor);
     } finally {
       this.store.releaseTopupLock(record.user_id, token);
     }

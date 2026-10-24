@@ -24,7 +24,7 @@ async function setup(t) {
   const file = path.join(dir, 'shared.db');
   const db = openDb(file);
   const dbB = openDb(file);
-  const store = createStore(db);
+  const store = createStore(db, { instance: { baseUrl: 'https://fixture.invalid' } });
   const other = createStore(dbB);
   const options = {
     store, username: 'root_admin', passwordHash: hashPassword(PASSWORD), totpSecret: ROOT_SECRET, requireTotp: true,
@@ -186,6 +186,7 @@ test('revocation while an operator is awaiting a balance prevents the final mone
   const waiting = new Promise((resolve) => { entered = resolve; });
   let writes = 0;
   const monitor = new Monitor({ store: f.store, client: {
+    baseUrl: 'https://fixture.invalid',
     async getUser(id) { entered(); await gate; return { id, balance: 5 }; },
     async addBalance() { writes += 1; },
   } });
@@ -213,6 +214,7 @@ test('revocation during reconciliation prevents a financial status change', asyn
   const gate = new Promise((resolve) => { resume = resolve; });
   const waiting = new Promise((resolve) => { entered = resolve; });
   const reconciler = new Reconciler({ store: f.store, client: {
+    baseUrl: 'https://fixture.invalid',
     async getBalanceHistory() {
       entered(); await gate;
       return { page: 1, page_size: 100, total: 1, pages: 1, items: [{ id: 1, notes: 'sentinel_id=unresolved;', used_by: 1, value: 100, type: 'admin_balance', status: 'used', used_at: new Date().toISOString() }] };

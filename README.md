@@ -23,6 +23,11 @@ POST /api/v1/admin/users/:id/balance  { operation: "add", balance: 100 }
 
 ## 快速开始
 
+按使用场景选择完整操作文档：
+
+- [本地启动（不使用 Docker）](docs/local-start.md)：Node.js 安装、配置、密码生成、单进程启动、热更新及模拟服务。
+- [Docker 部署](docs/docker-deploy.md)：服务器构建、Secret、上游网络、HTTPS 代理、数据卷备份及更新。
+
 ```bash
 npm install
 cp .env.example .env
@@ -177,7 +182,8 @@ SENTINEL_PROXY_NETWORK=npm_default docker compose -f docker-compose.yml -f docke
 不要在代理配置中覆盖原始 `Host`。若 Sub2API 也只在同一个受信任 Docker 私网提供 HTTP 服务，才设置
 `ALLOW_INSECURE_SUB2API_HTTP=true`。
 
-开发模式（前端热更新）：`npm run dev:server` + `npm run dev:web`（<http://127.0.0.1:5173>）。
+开发模式（前端热更新）：`PUBLISHED_PORTS=5173 npm run dev:server` + `npm run dev:web`（<http://127.0.0.1:5173>）。
+前者让后端接受开发网页的 loopback Host；后端保留 `PORT=7788`，两条命令分别在两个终端执行。
 
 ## 没有真实 sub2api 也可以先试
 
@@ -195,7 +201,10 @@ SUB2API_ADMIN_API_KEY=admin-mock-key-for-local-testing
 # 同时保留上面登录配置中的 SENTINEL_ADMIN_USERNAME / SENTINEL_ADMIN_PASSWORD_HASH
 ```
 
-然后在页面里添加用户 `1`，点「立即巡检」，可以看到余额从 5 变成 105 并生成流水。
+建议使用独立测试账本 `SENTINEL_DB_PATH=./data/mock-sentinel.db`，避免与真实流水混用。
+先保持 `AUTO_TOPUP_ENABLED=false`，在页面里添加用户 `1` 并巡检，只查询余额、不加额。
+只有确认连接的是本机模拟服务后，才开启写开关并重启，再以阈值 `10`、金额 `100` 和「需审批」模式巡检并批准，
+可以看到模拟余额从 5 变成 105 并生成流水。完整步骤见 [本地启动文档](docs/local-start.md#6-没有真实-sub2api用本机模拟服务)。
 
 ## 为什么用 `operation: "add"` 而不是 "set"
 
@@ -216,10 +225,41 @@ SUB2API_ADMIN_API_KEY=admin-mock-key-for-local-testing
 哨兵自身使用内存队列、跨进程 SQLite 锁，以及持久化的 `pending` / `unknown` 拦截，不会自动重试结果不明的写入。
 收到 `X-Idempotency-Replayed: true` 时会保留重放标记。
 
+添加与编辑监控规则互相独立：重复添加返回 `409`，不会覆盖原来的停用、审批模式或备注。
+编辑和删除都必须提交从监控列表取得的 `rule_revision`（请求字段为 `ruleRevision`）；旧版本返回 `409`，需刷新后重新确认。
+在上游用户校验返回后，保存事务内还会重新核对操作者会话、角色和凭据版本，停用 / 降权 / 重置中的旧请求不能继续保存。
+
 每次保存监控设置都会产生新的规则版本，并使旧的待审批提议过期。最后一次余额读取之后，哨兵在同一 SQLite
-写事务内重新检查白名单、启停、模式、规则版本、急停、熔断、未决流水、锁归属及每日限额，再预约 `pending` 流水。
+写事务内重新检查实例绑定、白名单、启停、模式、规则版本、急停、熔断、未决流水、锁归属及每日限额，再预约 `pending` 流水。
 这也适用于 Web 与 CLI 共用账本的情况。**事务提交后本笔即进入执行阶段；急停不能撤回已经发出的请求**。
 手动加额允许操作者明确指定不同金额、忽略余额阈值，但不能绕过白名单、停用状态和全局护栏。
+
+## 账本与实例绑定
+
+一个 SQLite 账本只能对应一个 Sub2API 实例。全新空库会在首次启动时绑定规范化后的**完整** `SUB2API_BASE_URL`
+（保留 `/base/path`，忽略末尾斜杠 / 默认端口等等价差异）以及可选的 `SENTINEL_INSTANCE_ID`。
+轮换管理员 Key 不改变绑定；更换域名、端口、基础路径或实例 ID 会被拦截，不会自动更新绑定。
+此时面板仍能读取原有账本，顶部显示阻断原因，但自动 / 手动加额、审批、余额查询、身份同步、规则新增 / 编辑 / 删除
+和连接测试均不会操作新实例；核验只记录实例不匹配，不会查询错误站点。
+
+**升级前已有数据但没有绑定的旧账本不会静默绑定。** 操作者需要核实账本确实属于当前站点，并按以下流程在可信本地终端确认：
+
+1. 暂停所有使用该账本的 Web / CLI 进程，备份账本；不要用删除数据绕过阻断。
+2. 保留原来的完整 `SUB2API_BASE_URL`，设置 `AUTO_TOPUP_ENABLED=false`。若需要实例 ID，应现在配置并记录它。
+3. 本地执行命令，`--confirm` 必须等于规范化后的完整基础地址（无末尾斜杠）；不会发出任何上游请求：
+
+```bash
+node server/src/cli.js bind-instance --confirm=https://sub2api.example.com/base/path
+```
+
+Docker 部署可在同一配置 / 账本 volume 下使用 `docker compose run --rm --no-deps -e AUTO_TOPUP_ENABLED=false sentinel node server/src/cli.js bind-instance --confirm=https://sub2api.example.com/base/path`。
+命令只在未绑定账本上执行；已经绑定但不匹配的账本无法重新绑定。历史流水保存的地址不同会拒绝确认；
+旧版只有 origin 或没有地址的流水无法证明基础路径或实例归属，必须由操作者独立核实，不能把命令成功当作归属证明。
+确认后先以观察模式恢复服务，再核对监控名单和未决流水，最后决定是否恢复写入。
+
+如果确实迁移到不同 Sub2API，应建立独立新账本并重新审查用户名单，旧账本留在原实例上核验 / 收款，不能直接沿用同 ID 白名单。
+**无法自动发现同一 URL 上重建的新实例。** 建议为每次部署配置不同的非秘密 `SENTINEL_INSTANCE_ID`；
+该 ID 由运维维护，不是上游自动提供的认证指纹。已经绑定的账本不能在事后添加 / 更换 ID 而继续写入。
 
 ## 状态说明（重要）
 
@@ -261,8 +301,10 @@ SUB2API_ADMIN_API_KEY=admin-mock-key-for-local-testing
 
 每个用户可以单独选：
 
-- **自动**（默认）：余额低于阈值 → 立即加额。
+- **自动**：余额低于阈值 → 立即加额；在新增表单中需要主动选择。
 - **需审批**：余额低于阈值 → 只在「待审批」页生成一条提议，**不动余额**，点「批准并加额」才真正写入。
+
+页面新增默认选择「需审批」。为兼容现有调用，API / CLI 不传 `mode` 时仍使用 `auto`，自动化客户端应始终明确提交模式。
 
 建议对不熟悉的客户先用「需审批」跑一段时间。审批时有几层保护：
 
@@ -288,6 +330,9 @@ SUB2API_ADMIN_API_KEY=admin-mock-key-for-local-testing
 配置好后点页面右上角「测试通知」即可验证。
 
 通知是**完全不阻塞金钱流程**的：发送失败只会记一条日志，绝不会影响加额本身（有专门测试覆盖）。
+企业微信 / 钉钉要求响应明确包含数值 `errcode: 0`；飞书要求数值 `code: 0` 或旧版 `StatusCode: 0`，存在多个字段时必须均为成功。
+Slack 要求纯文本 `ok`；上述渠道空响应、畸形或缺少成功字段都会被拒绝。`generic` 仅判断 HTTP 2xx，不承诺对方业务处理结果。
+失败日志使用固定脱敏信息，连续同类失败去重，成功恢复后允许再次记录失败。本轮不增加通知重试 / outbox，更不会为了通知重试加额。
 
 ## 命令行 / 定时任务
 
@@ -303,6 +348,9 @@ node server/src/cli.js verify <topupId>  # 只查询上游调账历史并保存�
 node server/src/cli.js checks <topupId>  # 查看保存的核验凭据
 node server/src/cli.js resolve-applied <topupId> --confirm=<topupId>
 ```
+
+`add <id> <threshold> <amount> --mode=approval` 只创建，不再覆盖已有规则；修改规则请使用页面或带 `ruleRevision` 的 PATCH API。
+`users` 列表提供 `REVISION`，CLI 删除必须指定 `remove <id> --revision=<rule_revision>`，旧版本删除不会生效。
 
 cron 示例（每 5 分钟）：
 
@@ -324,8 +372,9 @@ cron 示例（每 5 分钟）：
 3. 只允许**唯一匹配**。金额不同、用户不同、多个同 ID 记录等会标记 `mismatch`；查无记录为 `not_found`，分页不完整为 `incomplete`，查询异常为 `error`。
 4. 每次核对都会追加保存操作者、时间、原流水状态、候选调账凭据、扫描范围及证据 JSON 的 SHA-256，可查看并导出完整核验 CSV。
 
-新版加额流水还保留 Sub2API 的 origin。如果后来更换了服务器地址，系统不会用新站点的历史确认旧站点的加额。
-一个哨兵账本应对应一个 Sub2API 实例；旧流水没有保存 origin 时，核验凭据会明确将原地址记为空。
+新版加额流水的 `provider_origin` 保存完整规范化基础地址（包含路径）；旧版只保存 origin 的流水仍可兼容。
+账本实例绑定会在上游查询前校验，更换站点或路径不能用新站历史确认旧站加额。旧流水没有地址时，核验凭据会明确将原地址记为空；
+只有账本已正确绑定时才允许查询，归属未知的旧账本必须先按「账本与实例绑定」进行本地确认。
 
 一次最多扫描 10 页、每页 100 条。扫描超限、分页总数变化或记录重叠时，即使已找到候选，也不会标记为匹配。
 `not_found` **不表示未到账**：已检查的 Sub2API 实现可能在加额成功后写调账历史失败，历史也可能被管理员删除。
@@ -355,6 +404,7 @@ cron 示例（每 5 分钟）：
 操作者、sub2api HTTP 状态、可获得的上游交易 ID、是否重放、创建时间、对账人、对账状态。CSV 会对文本字段做公式注入转义。
 
 未确认的 `unknown` / `pending` 不进入应收汇总，也不能直接标记已收款；它们会继续阻止该用户的新加额。
+「未决处理」独立查询这两种状态，不会因超过 200 条更新的成功流水而丢失入口；它与「加额流水」均支持按用户、状态及分页查阅，页数来自后端总数。
 「确认已收款」属于操作者对实际收款的登记，不等于支付平台回执或银行到账证明。
 
 ## 配置项
@@ -362,6 +412,7 @@ cron 示例（每 5 分钟）：
 | 变量 | 默认 | 说明 |
 | --- | --- | --- |
 | `SUB2API_BASE_URL` | — | 必填，sub2api 地址 |
+| `SENTINEL_INSTANCE_ID` | 空 | 可选非秘密实例标识，最长 200 位字母 / 数字 / `._:-`；必须在首次绑定前确定，同 URL 重建时应使用不同 ID |
 | `SUB2API_ADMIN_API_KEY` / `SUB2API_ADMIN_API_KEY_FILE` | — | 必填，管理员 Key；环境变量与 Secret 文件路径二选一 |
 | `ALLOW_INSECURE_SUB2API_HTTP` | `false` | 非 loopback 的 HTTP 仅可在受信任隔离网络中显式开启 |
 | `SENTINEL_ADMIN_USERNAME` | — | 必填，哨兵登录用户名 |
@@ -397,15 +448,15 @@ cron 示例（每 5 分钟）：
 | PATCH | `/api/accounts/:id` | 管理员更新 `{role?,enabled?,version,currentPassword,otp}` |
 | POST | `/api/accounts/:id/reinvite` | 管理员重置凭据并重新邀请 `{version,currentPassword,otp}` |
 | GET | `/api/users` | 监控列表 + 最近查询余额、时间、过期标记；页面刷新不触发额外上游查询 |
-| POST | `/api/users` | 添加监控 `{userId, threshold, amount, mode}` |
-| PATCH | `/api/users/:id` | 修改阈值/金额/启停/模式 |
-| DELETE | `/api/users/:id` | 停止监控（保留历史流水） |
+| POST | `/api/users` | 添加监控 `{userId, threshold, amount, mode}`；重复返回 `409`，绝不覆盖 |
+| PATCH | `/api/users/:id` | 修改阈值/金额/启停/模式；必须含 `ruleRevision`，冲突 `409` |
+| DELETE | `/api/users/:id` | 请求体必须含 `ruleRevision`；停止监控且保留历史流水，冲突 `409` |
 | POST | `/api/users/:id/topup` | 手动加额 `{amount}` |
 | GET | `/api/proposals` | 待审批列表 |
 | POST | `/api/proposals/:id/approve` | 批准并加额 |
 | POST | `/api/proposals/:id/reject` | 拒绝 |
 | POST | `/api/notify/test` | 发送测试通知 |
-| GET | `/api/records` | 加额流水 |
+| GET | `/api/records` | `{items,total,limit,offset}`；支持 `userId,status,limit,offset`，`status=unresolved` 查询 pending / unknown |
 | GET | `/api/records.csv` | 导出完整加额流水（含失败/未知/对账字段） |
 | POST | `/api/records/:id/verify` | 查询上游余额历史，追加核验凭据，不改变加额状态 |
 | GET | `/api/records/:id/checks` | 查看最近 100 条核验 / 确认凭据 |

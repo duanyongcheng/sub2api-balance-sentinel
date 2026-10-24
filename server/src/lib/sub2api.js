@@ -1,5 +1,6 @@
 import { config } from '../config.js';
 import { isIP } from 'node:net';
+import { instanceIdentity } from './instance.js';
 
 const MAX_RESPONSE_BYTES = 1_048_576;
 
@@ -16,8 +17,9 @@ export class Sub2ApiError extends Error {
 }
 
 export class Sub2ApiClient {
-  constructor({ baseUrl = config.baseUrl, adminKey = config.adminKey, timeoutMs = config.requestTimeoutMs } = {}) {
-    this.baseUrl = baseUrl;
+  constructor({ baseUrl = config.baseUrl, instanceId = config.instanceId, adminKey = config.adminKey, timeoutMs = config.requestTimeoutMs } = {}) {
+    this.baseUrl = baseUrl ? instanceIdentity({ baseUrl, instanceId }).baseUrl : baseUrl;
+    this.instanceId = instanceId;
     this.adminKey = adminKey;
     this.timeoutMs = Number.isFinite(timeoutMs) && timeoutMs > 0 ? Math.min(120_000, timeoutMs) : 15_000;
     if (this.baseUrl) {

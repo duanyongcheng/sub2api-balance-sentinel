@@ -21,8 +21,10 @@ try {
 console.log(`[boot] target origin: ${new URL(config.baseUrl).origin}`);
 
 const db = openDb(config.dbPath);
-const store = createStore(db);
 const client = new Sub2ApiClient();
+const store = createStore(db, { instance: client });
+const binding = store.instanceBindingStatus(client);
+if (!binding.ok) console.warn(`[boot] upstream operations BLOCKED: ${binding.reason}`);
 const notifier = new Notifier({ store });
 const monitor = new Monitor({ store, client, notifier });
 

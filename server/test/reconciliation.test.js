@@ -22,8 +22,8 @@ function setup(t, { status = 'unknown', rows = [adjustment()] } = {}) {
   const file = path.join(dir, 'shared.db');
   const db = openDb(file);
   const dbB = openDb(file);
-  const store = createStore(db);
-  const other = createStore(dbB);
+  const store = createStore(db, { instance: { baseUrl: 'https://sub2api.invalid' } });
+  const other = createStore(dbB, { instance: { baseUrl: 'https://sub2api.invalid' } });
   const calls = { reads: 0, writes: 0 };
   const client = {
     baseUrl: 'https://sub2api.invalid',
@@ -258,13 +258,16 @@ test('CLI verification and confirmation use the same evidence path and require a
   const base = `http://127.0.0.1:${server.address().port}`;
   // This fixture represents a pre-origin-migration record.
   f.db.prepare('UPDATE topup_records SET provider_origin = NULL WHERE id = ?').run(RECORD_ID);
+  f.db.prepare("DELETE FROM settings WHERE key = 'instance_binding'").run();
   const env = {
     ...process.env, SUB2API_BASE_URL: base, SUB2API_ADMIN_API_KEY: 'admin-cli-test', SUB2API_ADMIN_API_KEY_FILE: '',
     SENTINEL_DB_PATH: f.file, NOTIFY_WEBHOOK_URL: '', NOTIFY_WEBHOOK_URL_FILE: '',
     SENTINEL_ADMIN_PASSWORD_HASH: '', SENTINEL_ADMIN_PASSWORD_HASH_FILE: '',
     SENTINEL_ADMIN_TOTP_SECRET: '', SENTINEL_ADMIN_TOTP_SECRET_FILE: '',
+    AUTO_TOPUP_ENABLED: 'false', SENTINEL_INSTANCE_ID: '',
   };
   const invoke = (...args) => promisify(execFile)(process.execPath, ['server/src/cli.js', ...args], { env, cwd: path.resolve(import.meta.dirname, '../..') });
+  await invoke('bind-instance', `--confirm=${base}`);
   const checked = await invoke('verify', RECORD_ID);
   assert.match(checked.stdout, /^matched:/);
   const history = JSON.parse((await invoke('checks', RECORD_ID)).stdout);

@@ -23,7 +23,7 @@ async function fixture(t) {
   const proof = (secret = SECRET, password = PASSWORD) => { advance(); return { currentPassword: password, otp: code(secret) }; };
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'sentinel-accounts-http-'));
   const db = openDb(path.join(dir, 'test.db'));
-  const store = createStore(db);
+  const store = createStore(db, { instance: { baseUrl: 'https://fixture.invalid' } });
   const auth = new AuthManager({
     store, username: 'bootstrap_admin', passwordHash: hashPassword(PASSWORD), totpSecret: SECRET, accountKey: KEY, requireTotp: true,
     sessionTtlMs: 8 * 60 * 60_000, idleTimeoutMs: 60 * 60_000, maxLoginAttempts: 5, loginWindowMs: 15 * 60_000,
@@ -31,6 +31,7 @@ async function fixture(t) {
   let balance = 5;
   let writes = 0;
   const client = {
+    baseUrl: 'https://fixture.invalid',
     async getUser(id) { return { id, email: 'a@example.com', balance }; },
     async addBalance(id, amount) { writes += 1; balance += amount; return { status: 200, replay: false, data: { id, balance } }; },
   };

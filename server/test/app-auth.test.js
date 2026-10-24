@@ -11,7 +11,7 @@ import { createApp } from '../src/app.js';
 test('dashboard APIs require login and write operations require CSRF', async (t) => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'sentinel-auth-app-'));
   const db = openDb(path.join(dir, 'test.db'));
-  const store = createStore(db);
+  const store = createStore(db, { instance: { baseUrl: 'https://fixture.invalid' } });
   store.upsertUser({ userId: 8, email: 'cached@example.com', threshold: 5, amount: 10 });
   store.beginTopup({ id: 'sentinel-csv-1', userId: 8, email: '=HYPERLINK("https://attacker.invalid")', balanceBefore: 0, amount: 10, threshold: 5, source: 'auto', actor: 'admin' });
   store.finishTopup({ id: 'sentinel-csv-1', status: 'success', balanceAfter: 10, httpStatus: 200, providerReference: '=SUM(1,1)' });
@@ -38,6 +38,7 @@ test('dashboard APIs require login and write operations require CSRF', async (t)
   });
   let historyReads = 0;
   const client = {
+    baseUrl: 'https://fixture.invalid',
     async getBalanceHistory(userId, pageSize, page) {
       historyReads += 1;
       return { items: [{

@@ -1,6 +1,7 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useReducer, useRef, useState } from 'react';
 import { api } from './api.js';
 import { AccountSettings, EnrollmentScreen, ROLE_LABELS } from './Accounts.jsx';
+import { createRequestGate, DEFAULT_LEDGER_QUERY, ledgerPage, ledgerQueryReducer } from './ledger-query.js';
 
 const fmt = (n) => (n == null ? '—' : Number(n).toLocaleString(undefined, { maximumFractionDigits: 4 }));
 const when = (iso) => (iso ? new Date(iso).toLocaleString() : '—');
@@ -21,13 +22,15 @@ export default function App() {
   const [session, setSession] = useState(null);
   const [cfg, setCfg] = useState(null);
   const [users, setUsers] = useState([]);
-  const [records, setRecords] = useState([]);
+  const [recordTotal, setRecordTotal] = useState(null);
+  const [recordRefresh, setRecordRefresh] = useState(0);
   const [recon, setRecon] = useState(null);
   const [events, setEvents] = useState([]);
   const [proposals, setProposals] = useState([]);
   const [error, setError] = useState(null);
   const [toast, setToast] = useState(null);
   const [busy, setBusy] = useState(false);
+  const refreshGate = useRef(createRequestGate());
   const [enrollmentToken, setEnrollmentToken] = useState(() => new URLSearchParams(window.location.hash.slice(1)).get('enroll'));
 
   useEffect(() => {
@@ -43,13 +46,16 @@ export default function App() {
   }, [enrollmentToken]);
 
   const refresh = useCallback(async () => {
+    const request = refreshGate.current.begin();
     try {
       const [c, u, r, rc, e, p] = await Promise.all([
-        api.config(), api.users(), api.records(), api.reconciliation(), api.events(), api.proposals(),
+        api.config(), api.users(), api.records({ limit: 1 }), api.reconciliation(), api.events(), api.proposals(),
       ]);
-      setCfg(c); setUsers(u.items); setRecords(r.items); setRecon(rc); setEvents(e.items); setProposals(p.items);
+      if (!refreshGate.current.isCurrent(request)) return;
+      setCfg(c); setUsers(u.items); setRecordTotal(r.total); setRecon(rc); setEvents(e.items); setProposals(p.items);
       setError(null);
     } catch (err) {
+      if (!refreshGate.current.isCurrent(request)) return;
       if (err.status === 401) {
         setSession((current) => ({ authenticated: false, authRequired: true, totpRequired: current?.totpRequired === true }));
         setError(null);
@@ -71,7 +77,7 @@ export default function App() {
     if (!session?.authenticated || enrollmentToken) return undefined;
     refresh();
     const id = setInterval(refresh, 15000);
-    return () => clearInterval(id);
+    return () => { clearInterval(id); refreshGate.current.invalidate(); };
   }, [refresh, session?.authenticated, enrollmentToken]);
 
   function notify(msg, tone = 'ok') {
@@ -84,6 +90,7 @@ export default function App() {
     try {
       await fn();
       await refresh();
+      setRecordRefresh((current) => current + 1);
       if (msg) notify(msg);
       return true;
     } catch (err) {
@@ -151,6 +158,9 @@ export default function App() {
       {cfg && !cfg.adminKeyConfigured && (
         <div className="banner banner-danger">未配置 SUB2API_ADMIN_API_KEY，请在 .env 中填写后重启。</div>
       )}
+      {cfg?.instanceBinding && !cfg.instanceBinding.ok && (
+        <div className="banner banner-danger">上游实例绑定未通过（{cfg.instanceBinding.status}）：{cfg.instanceBinding.reason}。已禁止上游查询、添加监控及加额；请在服务器本地核实实例与账本配置。</div>
+      )}
       {cfg && !cfg.monitor.autoTopUpEnabled && (
         <div className="banner banner-warn">AUTO_TOPUP_ENABLED=false：当前只观察不写入。</div>
       )}
@@ -164,12 +174,12 @@ export default function App() {
       <section className="stats">
         <Stat label="待收款金额" value={fmt(owed)} accent />
         <Stat label="监控用户" value={users.length} />
-        <Stat label="加额度记录" value={records.length} />
+        <Stat label="加额度记录" value={recordTotal ?? '—'} />
         <Stat label="最近巡检" value={cfg?.lastTick ? when(cfg.lastTick) : '—'} small />
       </section>
 
       <nav className="tabs">
-        {[['users', '监控用户'], ['approvals', `待审批${proposals.length ? ` (${proposals.length})` : ''}`], ['records', '加额流水'], ['recon', '对账收款'], ['events', '运行日志'], ['account', session.role === 'admin' ? '账户管理' : '账户安全']].map(([k, label]) => (
+        {[['users', '监控用户'], ['approvals', `待审批${proposals.length ? ` (${proposals.length})` : ''}`], ['records', '加额流水'], ['unresolved', '未决处理'], ['recon', '对账收款'], ['events', '运行日志'], ['account', session.role === 'admin' ? '账户管理' : '账户安全']].map(([k, label]) => (
           <button key={k} className={tab === k ? 'tab active' : 'tab'} onClick={() => setTab(k)}>{label}</button>
         ))}
       </nav>
@@ -177,7 +187,7 @@ export default function App() {
       <main>
         {tab === 'users' && <UsersTab users={users} cfg={cfg} busy={busy || readOnly} readOnly={readOnly} action={action} />}
         {tab === 'approvals' && <ApprovalsTab proposals={proposals} busy={busy || readOnly} action={action} />}
-        {tab === 'records' && <RecordsTab records={records} busy={busy} readOnly={readOnly} action={action} />}
+        {['records', 'unresolved'].includes(tab) && <RecordsTab key={tab} users={users} unresolved={tab === 'unresolved'} refreshVersion={recordRefresh} busy={busy} readOnly={readOnly} action={action} />}
         {tab === 'recon' && <ReconTab recon={recon} busy={busy || readOnly} action={action} />}
         {tab === 'events' && <EventsTab events={events} />}
         {tab === 'account' && <AccountSettings session={session} busy={busy} action={action} />}
@@ -242,17 +252,17 @@ function Stat({ label, value, accent, small }) {
   );
 }
 
-function UsersTab({ users, cfg, busy, action, readOnly = false }) {
-  const [form, setForm] = useState({ userId: '', threshold: 20, amount: 100 });
+export function UsersTab({ users, cfg, busy, action, readOnly = false }) {
+  const [form, setForm] = useState({ userId: '', threshold: 20, amount: 100, mode: 'approval' });
   const [editing, setEditing] = useState(null);
   const cap = cfg?.guard?.maxTopUpAmountPerEvent ?? 100;
 
   function submit(e) {
     e.preventDefault();
     action(
-      () => api.addUser({ userId: Number(form.userId), threshold: Number(form.threshold), amount: Number(form.amount) }),
+      () => api.addUser({ userId: Number(form.userId), threshold: Number(form.threshold), amount: Number(form.amount), mode: form.mode }),
       '已加入监控',
-    ).then(() => setForm({ userId: '', threshold: 20, amount: 100 }));
+    ).then((ok) => { if (ok) setForm({ userId: '', threshold: 20, amount: 100, mode: 'approval' }); });
   }
 
   return (
@@ -273,8 +283,15 @@ function UsersTab({ users, cfg, busy, action, readOnly = false }) {
           <input required type="number" step="0.01" min="0.01" max={cap} value={form.amount}
             onChange={(e) => setForm({ ...form, amount: e.target.value })} />
         </label>
+        <label>
+          执行模式
+          <select value={form.mode} onChange={(e) => setForm({ ...form, mode: e.target.value })}>
+            <option value="approval">需人工审批</option>
+            <option value="auto">自动加额</option>
+          </select>
+        </label>
         <button className="btn btn-primary" disabled={busy}>添加监控</button>
-        <p className="hint">单次上限 {cap}（由 GUARD_MAX_TOPUP_PER_EVENT 控制）。只有这里的用户会被加额度。</p>
+        <p className="hint">默认需审批；选择自动加额即授权按规则执行。单次上限 {cap}（由 GUARD_MAX_TOPUP_PER_EVENT 控制）。已有监控用户请直接编辑，重复添加不会覆盖规则。</p>
       </form>}
 
       {users.length === 0 ? (
@@ -318,7 +335,7 @@ function UsersTab({ users, cfg, busy, action, readOnly = false }) {
                     <td>
                       <button className="btn btn-sm" disabled={busy} title="切换自动执行 / 需人工审批"
                         onClick={() => action(
-                          () => api.updateUser(u.user_id, { mode: u.mode === 'approval' ? 'auto' : 'approval' }),
+                          () => api.updateUser(u.user_id, { mode: u.mode === 'approval' ? 'auto' : 'approval', ruleRevision: u.rule_revision }),
                           u.mode === 'approval' ? '已切换为自动加额' : '已切换为需审批',
                         )}>
                         {u.mode === 'approval' ? '需审批' : '自动'}
@@ -326,11 +343,11 @@ function UsersTab({ users, cfg, busy, action, readOnly = false }) {
                     </td>
                     <td className="row-actions">
                       <button className="btn btn-sm" disabled={busy}
-                        onClick={() => setEditing(editing?.userId === u.user_id ? null : { userId: u.user_id, threshold: u.threshold, amount: u.amount })}>
+                        onClick={() => setEditing(editing?.userId === u.user_id ? null : { userId: u.user_id, threshold: u.threshold, amount: u.amount, ruleRevision: u.rule_revision })}>
                         调参数
                       </button>
                       <button className="btn btn-sm" disabled={busy}
-                        onClick={() => action(() => api.updateUser(u.user_id, { enabled: !u.enabled }), u.enabled ? '已停用' : '已启用')}>
+                        onClick={() => action(() => api.updateUser(u.user_id, { enabled: !u.enabled, ruleRevision: u.rule_revision }), u.enabled ? '已停用' : '已启用')}>
                         {u.enabled ? '停用' : '启用'}
                       </button>
                       <button className="btn btn-sm" disabled={busy}
@@ -340,7 +357,7 @@ function UsersTab({ users, cfg, busy, action, readOnly = false }) {
                           }
                         }}>立即加额</button>
                       <button className="btn btn-sm btn-danger" disabled={busy}
-                        onClick={() => confirm(`停止监控 #${u.user_id}？（不会删除历史流水）`) && action(() => api.removeUser(u.user_id), '已移除')}>
+                        onClick={() => confirm(`停止监控 #${u.user_id}？（不会删除历史流水）`) && action(() => api.removeUser(u.user_id, u.rule_revision), '已移除')}>
                         移除
                       </button>
                     </td>
@@ -350,7 +367,7 @@ function UsersTab({ users, cfg, busy, action, readOnly = false }) {
                       <td colSpan="9">
                         <form className="inline-edit" onSubmit={(e) => {
                           e.preventDefault();
-                          action(() => api.updateUser(u.user_id, { threshold: Number(editing.threshold), amount: Number(editing.amount) }), '参数已更新')
+                          action(() => api.updateUser(u.user_id, { threshold: Number(editing.threshold), amount: Number(editing.amount), ruleRevision: editing.ruleRevision }), '参数已更新')
                             .then((ok) => { if (ok) setEditing(null); });
                         }}>
                           <label>低于余额阈值
@@ -363,7 +380,7 @@ function UsersTab({ users, cfg, busy, action, readOnly = false }) {
                           </label>
                           <button className="btn btn-primary btn-sm" disabled={busy}>保存</button>
                           <button type="button" className="btn btn-sm" disabled={busy} onClick={() => setEditing(null)}>取消</button>
-                          <span className="hint">单次上限 {cap}</span>
+                          <span className="hint">单次上限 {cap}。若规则已被其他操作修改，请取消后重新打开编辑。</span>
                         </form>
                       </td>
                     </tr>
@@ -426,21 +443,120 @@ function ApprovalsTab({ proposals, busy, action }) {
   );
 }
 
-function RecordsTab({ records, busy, action, readOnly = false }) {
+export function RecordsTab({ users = [], unresolved = false, refreshVersion = 0, busy, action, readOnly = false }) {
+  const [query, changeQuery] = useReducer(ledgerQueryReducer, { ...DEFAULT_LEDGER_QUERY, status: unresolved ? 'unresolved' : '' });
+  const [filters, setFilters] = useState({ userId: '', status: '' });
+  const [data, setData] = useState({ key: null, items: [], total: 0 });
+  const [loading, setLoading] = useState(false);
+  const [loadError, setLoadError] = useState(null);
   const [inspection, setInspection] = useState(null);
+  const gate = useRef(createRequestGate());
+  const inspectionGate = useRef(createRequestGate());
+  const activeRequest = useRef(null);
+  const queryKey = JSON.stringify(query);
+  const hasData = data.key === queryKey;
+  const records = hasData ? data.items : [];
+  const total = hasData ? data.total : 0;
+  const page = ledgerPage(query, total);
+
+  const load = useCallback(async () => {
+    activeRequest.current?.abort();
+    const controller = new AbortController();
+    activeRequest.current = controller;
+    const request = gate.current.begin();
+    setLoading(true);
+    setLoadError(null);
+    try {
+      const result = await api.records(query, { signal: controller.signal });
+      if (!gate.current.isCurrent(request)) return;
+      const nextPage = ledgerPage(query, result.total);
+      // Resolving the last unresolved row can remove the final page.
+      if (query.offset > nextPage.lastOffset) {
+        changeQuery({ type: 'page', offset: nextPage.lastOffset });
+        return;
+      }
+      setData({ key: queryKey, items: result.items, total: result.total });
+    } catch (err) {
+      if (gate.current.isCurrent(request) && err.name !== 'AbortError') setLoadError(err.message);
+    } finally {
+      if (gate.current.isCurrent(request)) setLoading(false);
+    }
+  }, [query, queryKey]);
+
+  useEffect(() => {
+    load();
+    const timer = setInterval(load, 15000);
+    return () => {
+      clearInterval(timer);
+      gate.current.invalidate();
+      activeRequest.current?.abort();
+    };
+  }, [load, refreshVersion]);
+
+  useEffect(() => {
+    setInspection(null);
+    return () => inspectionGate.current.invalidate();
+  }, [queryKey]);
+
+  async function readInspection(id, request) {
+    const { items } = await api.recordChecks(id);
+    if (inspectionGate.current.isCurrent(request)) setInspection({ id, items, queryKey });
+  }
 
   function inspect(id, verify = false) {
+    const request = inspectionGate.current.begin();
     return action(async () => {
       if (verify) await api.verifyRecord(id);
-      const { items } = await api.recordChecks(id);
-      setInspection({ id, items });
+      await readInspection(id, request);
     }, verify ? '核验结果已留存，请查看证据' : null);
   }
 
-  if (!records.length) return <div className="empty">还没有加额度记录。</div>;
   return (
     <>
+    {unresolved && <div className="banner banner-warn">本页单独列出所有 pending / unknown 流水，不受新成功记录数量影响。未核实前继续拦截该用户加额；核对或确认到账不会补发。</div>}
+    <form className="card form-row ledger-filters" onSubmit={(e) => {
+      e.preventDefault();
+      changeQuery({ type: 'filter', values: { userId: filters.userId.trim(), status: unresolved ? 'unresolved' : filters.status } });
+    }}>
+      <label>流水用户 ID
+        <input type="number" min="1" step="1" inputMode="numeric" placeholder="全部用户（含已移除）" list="ledger-users"
+          value={filters.userId} onChange={(e) => setFilters({ ...filters, userId: e.target.value })} />
+        <datalist id="ledger-users">{users.map((u) => <option key={u.user_id} value={u.user_id}>{u.email || `#${u.user_id}`}</option>)}</datalist>
+      </label>
+      {!unresolved && <label>流水状态
+        <select value={filters.status} onChange={(e) => setFilters({ ...filters, status: e.target.value })}>
+          <option value="">全部状态</option>
+          <option value="unresolved">未决（pending / unknown）</option>
+          <option value="pending">pending</option>
+          <option value="unknown">unknown</option>
+          <option value="success">success</option>
+          <option value="failed">failed</option>
+        </select>
+      </label>}
+      <button className="btn btn-primary" type="submit">筛选流水</button>
+      <button className="btn btn-ghost" type="button" onClick={() => {
+        setFilters({ userId: '', status: '' });
+        changeQuery({ type: 'filter', values: { userId: '', status: unresolved ? 'unresolved' : '' } });
+      }}>清除筛选</button>
+      <label>每页条数
+        <select value={query.limit} onChange={(e) => changeQuery({ type: 'filter', values: { limit: Number(e.target.value) } })}>
+          {[25, 50, 100, 200].map((limit) => <option key={limit} value={limit}>{limit}</option>)}
+        </select>
+      </label>
+      <p className="hint">当前：{query.userId ? `用户 #${query.userId}` : '全部用户'} · {query.status || '全部状态'}。{hasData ? `共 ${total} 条匹配流水。` : '正在查询…'}</p>
+    </form>
+    {loadError && <div className="banner banner-danger" role="alert">流水加载失败：{loadError} <button className="link" type="button" onClick={load}>重试</button></div>}
     <p className="hint reconciliation-hint">上游核对按流水 ID、用户、金额逐笔匹配，不使用余额差推算。未找到记录不代表未到账，不会触发补发。</p>
+    <div className="ledger-pagination" aria-label="流水分页">
+      <span className="muted" aria-live="polite">{loading ? '加载中… · ' : ''}第 {page.page} / {hasData ? page.pages : '—'} 页{hasData ? ` · 共 ${total} 条` : ''}</span>
+      <div className="row-actions">
+        <button className="btn btn-sm" disabled={loading || !hasData || !page.hasPrevious} onClick={() => changeQuery({ type: 'page', offset: 0 })}>首页</button>
+        <button className="btn btn-sm" disabled={loading || !hasData || !page.hasPrevious} onClick={() => changeQuery({ type: 'page', offset: query.offset - query.limit })}>上一页</button>
+        <button className="btn btn-sm" disabled={loading || !hasData || !page.hasNext} onClick={() => changeQuery({ type: 'page', offset: query.offset + query.limit })}>下一页</button>
+        <button className="btn btn-sm" disabled={loading || !hasData || !page.hasNext} onClick={() => changeQuery({ type: 'page', offset: page.lastOffset })}>末页</button>
+      </div>
+    </div>
+    {!records.length ? <div className="empty">{!hasData && !loadError ? '正在加载流水…' : unresolved ? '当前筛选下没有未决流水。' : '当前筛选下没有加额度记录。'}</div> : <>
     <div className="table-scroll">
     <table className="table">
       <thead>
@@ -477,9 +593,10 @@ function RecordsTab({ records, busy, action, readOnly = false }) {
                     title="必须重新查询并找到唯一匹配的调账凭据，才允许确认到账"
                     onClick={() => {
                       if (confirm(`确认按上游凭据将 ${r.id} 记为已到账？不会再次加额。未决拦截解除后，该用户可能恢复自动加额。`)) {
+                        const request = inspectionGate.current.begin();
                         action(async () => {
                           await api.resolveApplied(r.id);
-                          setInspection({ id: r.id, items: (await api.recordChecks(r.id)).items });
+                          await readInspection(r.id, request);
                         }, '已根据上游凭据确认到账，未发送加额请求');
                       }
                     }}>确认已到账</button>
@@ -498,12 +615,13 @@ function RecordsTab({ records, busy, action, readOnly = false }) {
       </tbody>
     </table>
     </div>
-    {inspection && (
+    </>}
+    {inspection?.queryKey === queryKey && (
       <section className="card evidence-panel" aria-label="对账核验凭据">
         <div className="row-actions">
           <h2>核验凭据</h2>
           <a className="btn btn-sm" href={`/api/records/${encodeURIComponent(inspection.id)}/checks.csv`} download>导出完整核验凭据</a>
-          <button className="btn btn-sm btn-ghost" onClick={() => setInspection(null)}>关闭</button>
+          <button className="btn btn-sm btn-ghost" onClick={() => { inspectionGate.current.invalidate(); setInspection(null); }}>关闭</button>
         </div>
         <p className="mono">{inspection.id}</p>
         {!inspection.items.length && <p className="muted">尚无核验记录，请先点击“核对上游”。</p>}
@@ -530,7 +648,7 @@ function VerificationBadge({ outcome }) {
 
 function ReconTab({ recon, busy, action }) {
   if (!recon) return <div className="empty">加载中…</div>;
-  if (!recon.items.length) return <div className="empty">暂无已确认的待收款记录。未决流水请到“加额流水”核实。</div>;
+  if (!recon.items.length) return <div className="empty">暂无已确认的待收款记录。未决流水请到“未决处理”核实。</div>;
   return (
     <>
       <p className="hint reconciliation-hint">本页只确认实际收款，不会改变上游核对结果；逐笔核验和差异处理在“加额流水”中进行。</p>

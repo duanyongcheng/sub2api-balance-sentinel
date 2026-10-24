@@ -7,6 +7,7 @@ import { startOfTodayIso } from './lib/logic.js';
 import { AuthManager, cookieValue, parseCookies } from './lib/auth.js';
 import { Reconciler } from './lib/reconciliation.js';
 import { AccountManager } from './lib/accounts.js';
+import { InstanceBindingError } from './lib/instance.js';
 
 const SESSION_COOKIE = 'sentinel_session';
 
@@ -90,6 +91,7 @@ function asyncRoute(fn) {
 }
 
 export function createApp({ store, monitor, client, notifier = null, auth = null, reconciler = null }) {
+  store.ensureInstanceBinding(client);
   const app = express();
   app.disable('x-powered-by');
   app.use(express.json({ limit: '256kb' }));
@@ -256,6 +258,7 @@ export function createApp({ store, monitor, client, notifier = null, auth = null
   api.get('/config', (req, res) => {
     res.json({
       ...publicConfig(),
+      instanceBinding: store.instanceBindingStatus(client),
       killSwitch: monitor.isKillSwitchOn(),
       lastTick: monitor.lastTick,
       consecutiveFailures: monitor.consecutiveFailures,
@@ -300,6 +303,9 @@ export function createApp({ store, monitor, client, notifier = null, auth = null
       return res.status(400).json({ error: `amount exceeds global per-event cap ${config.guard.maxTopUpAmountPerEvent}` });
     }
 
+    store.assertInstanceBinding(client);
+    if (store.getUser(id)) return res.status(409).json({ error: 'User already monitored; edit the existing rule with its current revision' });
+
     // Verify the user actually exists in sub2api before supervising them.
     let resolvedEmail = null;
     try {
@@ -310,7 +316,11 @@ export function createApp({ store, monitor, client, notifier = null, auth = null
       return res.status(status).json({ error: `Cannot verify user ${id} in sub2api: ${err.message}` });
     }
 
-    const row = store.upsertUser({ userId: id, email: resolvedEmail, threshold: th, amount: amt, enabled, mode, note });
+    const result = store.createUser({ userId: id, email: resolvedEmail, threshold: th, amount: amt, enabled, mode, note }, {
+      instance: client, authorizeActor: () => authManager.isCurrentPrincipal(req.authSession, ['admin', 'operator']),
+    });
+    if (!result.ok) return res.status(result.status).json({ error: result.reason });
+    const row = result.user;
     store.log('info', 'user_added',
       `monitoring user ${id} (${resolvedEmail}): threshold=${th} amount=${amt} mode=${normalizeMode(mode)}`, id, req.authSession.username);
     res.json(row);
@@ -321,7 +331,8 @@ export function createApp({ store, monitor, client, notifier = null, auth = null
     if (!Number.isInteger(id) || id <= 0) return res.status(400).json({ error: 'userId must be a positive integer' });
     const existing = store.getUser(id);
     if (!existing) return res.status(404).json({ error: 'User not monitored' });
-    const { threshold, amount, enabled, note, mode } = req.body || {};
+    const { threshold, amount, enabled, note, mode, ruleRevision } = req.body || {};
+    if (typeof ruleRevision !== 'string' || !ruleRevision) return res.status(400).json({ error: 'ruleRevision is required' });
     const th = threshold === undefined ? existing.threshold : Number(threshold);
     const amt = amount === undefined ? existing.amount : Number(amount);
     if (!isPositiveFinite(th)) return res.status(400).json({ error: 'threshold must be a finite number > 0' });
@@ -334,16 +345,16 @@ export function createApp({ store, monitor, client, notifier = null, auth = null
     if (mode !== undefined && !['auto', 'approval'].includes(mode)) {
       return res.status(400).json({ error: "mode must be 'auto' or 'approval'" });
     }
-    const row = store.upsertUser({
+    const result = store.updateUser({
       userId: id,
-      email: existing.email,
-      username: existing.username,
       threshold: th,
       amount: amt,
       enabled: enabled === undefined ? Boolean(existing.enabled) : enabled,
       mode: mode === undefined ? existing.mode : mode,
       note: note === undefined ? existing.note : note,
-    });
+    }, ruleRevision, { instance: client, authorizeActor: () => authManager.isCurrentPrincipal(req.authSession, ['admin', 'operator']) });
+    if (!result.ok) return res.status(result.status).json({ error: result.reason });
+    const row = result.user;
     if (mode !== undefined && mode !== existing.mode) {
       store.log('info', 'user_mode_changed', `user ${id} mode: ${existing.mode} -> ${mode}`, id, req.authSession.username);
     }
@@ -354,8 +365,11 @@ export function createApp({ store, monitor, client, notifier = null, auth = null
   api.delete('/users/:userId', (req, res) => {
     const id = Number(req.params.userId);
     if (!Number.isInteger(id) || id <= 0) return res.status(400).json({ error: 'userId must be a positive integer' });
-    const changes = store.deleteUser(id);
-    if (!changes) return res.status(404).json({ error: 'User not monitored' });
+    const { ruleRevision } = req.body || {};
+    if (typeof ruleRevision !== 'string' || !ruleRevision) return res.status(400).json({ error: 'ruleRevision is required' });
+    const result = store.removeUser(id, ruleRevision, { instance: client,
+      authorizeActor: () => authManager.isCurrentPrincipal(req.authSession, ['admin', 'operator']) });
+    if (!result.ok) return res.status(result.status).json({ error: result.reason });
     monitor.forgetUserObservation?.(id);
     store.log('info', 'user_removed', `stopped monitoring user ${id}`, id, req.authSession.username);
     res.json({ ok: true });
@@ -370,6 +384,7 @@ export function createApp({ store, monitor, client, notifier = null, auth = null
     const amount = Number(req.body?.amount ?? user.amount);
     if (!isPositiveFinite(amount)) return res.status(400).json({ error: 'amount must be a finite number > 0' });
 
+    store.assertInstanceBinding(client);
     const fresh = await client.getUser(id);
     const liveBalance = Number(fresh.balance);
     if (!Number.isFinite(liveBalance)) return res.status(502).json({ error: 'Sub2Api returned a non-finite user balance' });
@@ -431,8 +446,8 @@ export function createApp({ store, monitor, client, notifier = null, auth = null
     const offsetRaw = Number(req.query.offset);
     const offset = Number.isFinite(offsetRaw) ? Math.min(10_000_000, Math.max(0, Math.floor(offsetRaw))) : 0;
     const status = req.query.status ? String(req.query.status) : null;
-    if (status !== null && !['pending', 'success', 'failed', 'unknown'].includes(status)) {
-      return res.status(400).json({ error: 'status must be pending, success, failed, or unknown' });
+    if (status !== null && !['pending', 'success', 'failed', 'unknown', 'unresolved'].includes(status)) {
+      return res.status(400).json({ error: 'status must be pending, success, failed, unknown, or unresolved' });
     }
     res.json({
       items: store.recentTopups({ userId, status, limit, offset }),
@@ -448,8 +463,8 @@ export function createApp({ store, monitor, client, notifier = null, auth = null
       return res.status(400).json({ error: 'userId must be a positive integer' });
     }
     const status = req.query.status ? String(req.query.status) : null;
-    if (status !== null && !['pending', 'success', 'failed', 'unknown'].includes(status)) {
-      return res.status(400).json({ error: 'status must be pending, success, failed, or unknown' });
+    if (status !== null && !['pending', 'success', 'failed', 'unknown', 'unresolved'].includes(status)) {
+      return res.status(400).json({ error: 'status must be pending, success, failed, unknown, or unresolved' });
     }
     res.type('text/csv; charset=utf-8');
     res.setHeader('Content-Disposition', 'attachment; filename="sub2api-ledger.csv"');
@@ -568,17 +583,20 @@ export function createApp({ store, monitor, client, notifier = null, auth = null
   });
 
   api.post('/tick', asyncRoute(async (req, res) => {
+    store.assertInstanceBinding(client);
     await monitor.tick();
     res.json({ lastTick: monitor.lastTick });
   }));
 
   // Connection test that never mutates anything.
   api.get('/test-connection', asyncRoute(async (req, res) => {
+    store.assertInstanceBinding(client);
     try {
       const users = store.listUsers();
       const probe = users[0]?.user_id;
       if (!probe) return res.json({ ok: true, note: 'No monitored users to probe' });
       const u = await client.getUser(probe);
+      store.assertInstanceBinding(client);
       res.json({ ok: true, userId: probe, balance: u.balance });
     } catch (err) {
       res.status(502).json({ ok: false, error: err.message });
@@ -602,7 +620,7 @@ export function createApp({ store, monitor, client, notifier = null, auth = null
 
   // Central error handler: never leak the admin key in responses.
   app.use((err, req, res, next) => {
-    const status = err instanceof Sub2ApiError ? 502 : 500;
+    const status = err instanceof InstanceBindingError ? 409 : err instanceof Sub2ApiError ? 502 : 500;
     console.error('[api]', redact(err.message));
     res.status(status).json({ error: redact(err.message) });
   });

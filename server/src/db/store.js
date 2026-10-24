@@ -2,6 +2,9 @@ import Database from 'better-sqlite3';
 import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
+import { InstanceBindingError, instanceIdentity, compatibleRecordedTarget } from '../lib/instance.js';
+
+const INSTANCE_BINDING_KEY = 'instance_binding';
 
 const SCHEMA = `
 -- Users under supervision. Whitelist by explicit id: nothing is topped up unless
@@ -224,7 +227,8 @@ function migrate(db) {
 
 const now = () => new Date().toISOString();
 
-export function createStore(db) {
+export function createStore(db, { instance = null } = {}) {
+  const bindingTarget = instance;
   const ledgerSelect = `SELECT r.*,
     (SELECT outcome FROM ledger_checks WHERE topup_id = r.id AND kind = 'verification' ORDER BY seq DESC LIMIT 1) AS verification_status,
     (SELECT created_at FROM ledger_checks WHERE topup_id = r.id AND kind = 'verification' ORDER BY seq DESC LIMIT 1) AS verified_at
@@ -305,18 +309,18 @@ export function createStore(db) {
     recentTopups: db.prepare(`
       ${ledgerSelect}
       WHERE (@user_id IS NULL OR user_id = @user_id)
-        AND (@status IS NULL OR status = @status)
+        AND (@status IS NULL OR status = @status OR (@status = 'unresolved' AND status IN ('pending', 'unknown')))
       ORDER BY created_at DESC, id DESC LIMIT @limit OFFSET @offset
     `),
     countTopupRecords: db.prepare(`
       SELECT COUNT(*) AS total FROM topup_records
       WHERE (@user_id IS NULL OR user_id = @user_id)
-        AND (@status IS NULL OR status = @status)
+        AND (@status IS NULL OR status = @status OR (@status = 'unresolved' AND status IN ('pending', 'unknown')))
     `),
     exportTopups: db.prepare(`
       ${ledgerSelect}
       WHERE (@user_id IS NULL OR user_id = @user_id)
-        AND (@status IS NULL OR status = @status)
+        AND (@status IS NULL OR status = @status OR (@status = 'unresolved' AND status IN ('pending', 'unknown')))
       ORDER BY created_at ASC, id ASC
     `),
     countTopupsSince: db.prepare(`
@@ -454,39 +458,136 @@ export function createStore(db) {
     clearLoginAttempts: db.prepare('DELETE FROM auth_login_attempts WHERE ip_hash = ?'),
   };
 
-  return {
+  function bindingStatus(target = bindingTarget) {
+    let configured;
+    try { configured = instanceIdentity(target); } catch {
+      return { ok: false, status: 'invalid', reason: 'A valid configured Sub2API instance identity is required' };
+    }
+    const row = stmt.getSetting.get(INSTANCE_BINDING_KEY);
+    if (!row) return { ok: false, status: 'unbound', configured, reason: 'Ledger is unbound; confirm the existing instance locally with writes disabled' };
+    let expected;
+    try {
+      const saved = JSON.parse(row.value);
+      if (saved.version !== 1 || typeof saved.baseUrl !== 'string' || typeof saved.instanceId !== 'string') throw new Error();
+      expected = instanceIdentity(saved);
+    } catch {
+      return { ok: false, status: 'invalid', configured, reason: 'Ledger instance binding is invalid; refusing upstream operations' };
+    }
+    const ok = expected.baseUrl === configured.baseUrl && expected.instanceId === configured.instanceId;
+    return { ok, status: ok ? 'bound' : 'mismatch', expected, configured,
+      ...(ok ? {} : { reason: 'Configured Sub2API instance differs from this ledger; refusing upstream operations' }) };
+  }
+
+  function assertBinding(target = bindingTarget) {
+    const status = bindingStatus(target);
+    if (!status.ok) throw new InstanceBindingError(status.reason);
+    return status.configured;
+  }
+
+  function writeUser(params) {
+    stmt.upsertUser.run({
+      user_id: params.userId, email: params.email ?? null, username: params.username ?? null,
+      threshold: params.threshold, amount: params.amount, enabled: params.enabled === undefined || params.enabled ? 1 : 0,
+      mode: params.mode === 'approval' ? 'approval' : 'auto', note: params.note ?? null,
+      rule_revision: crypto.randomUUID(), ts: now(),
+    });
+    stmt.expireProposalsForUser.run({ user_id: params.userId, note: 'monitoring rule changed', ts: now() });
+    return stmt.getUser.get(params.userId);
+  }
+
+  function ruleAuthorization({ instance, authorizeActor } = {}) {
+    assertBinding(instance);
+    return !authorizeActor || authorizeActor()
+      ? null : { ok: false, status: 403, reason: 'operator authorization changed' };
+  }
+
+  const store = {
+    instanceBindingStatus: bindingStatus,
+    assertInstanceBinding: assertBinding,
+    ensureInstanceBinding(target) {
+      return db.transaction(() => {
+        const status = bindingStatus(target);
+        if (status.status !== 'unbound') return status;
+        const nonempty = ['monitored_users', 'proposals', 'topup_records', 'ledger_checks', 'events', 'settings',
+          'topup_locks', 'auth_sessions', 'auth_accounts', 'auth_login_attempts']
+          .some((table) => db.prepare(`SELECT 1 FROM ${table} LIMIT 1`).get()) ||
+          stmt.lastTotpCounter.get().last_counter !== -1;
+        if (nonempty) return status;
+        stmt.setSetting.run(INSTANCE_BINDING_KEY, JSON.stringify({ version: 1, ...status.configured }), now());
+        return bindingStatus(target);
+      }).immediate();
+    },
+    confirmInstanceBinding(target, { writesEnabled, confirmation } = {}) {
+      return db.transaction(() => {
+        const identity = instanceIdentity(target);
+        if (writesEnabled !== false || confirmation !== identity.baseUrl) {
+          throw new InstanceBindingError('Binding requires AUTO_TOPUP_ENABLED=false and explicit confirmation of the full canonical base URL');
+        }
+        const status = bindingStatus(target);
+        if (status.status !== 'unbound') {
+          if (!status.ok) throw new InstanceBindingError(status.reason);
+          return status;
+        }
+        const origins = db.prepare('SELECT DISTINCT provider_origin FROM topup_records WHERE provider_origin IS NOT NULL').all();
+        if (origins.some((r) => !compatibleRecordedTarget(r.provider_origin, identity))) {
+          throw new InstanceBindingError('Historical attempts reference a different Sub2API instance; binding refused');
+        }
+        stmt.setSetting.run(INSTANCE_BINDING_KEY, JSON.stringify({ version: 1, ...identity }), now());
+        stmt.insertEvent.run(now(), 'warn', null, 'cli', 'instance_bound', 'Legacy ledger instance confirmed locally with money writes disabled');
+        return bindingStatus(target);
+      }).immediate();
+    },
     // ---- monitored users ----
     listUsers: () => stmt.listUsers.all(),
     enabledUsers: () => stmt.getUsers.all(),
     getUser: (id) => stmt.getUser.get(id),
-    upsertUser({ userId, email, username = null, threshold, amount, enabled = true, mode = 'auto', note = null }) {
-      db.transaction(() => {
-        stmt.upsertUser.run({
-          user_id: userId,
-          email,
-          username,
-          threshold,
-          amount,
-          enabled: enabled ? 1 : 0,
-          mode: mode === 'approval' ? 'approval' : 'auto',
-          note,
-          rule_revision: crypto.randomUUID(),
-          ts: now(),
-        });
-        stmt.expireProposalsForUser.run({ user_id: userId, note: 'monitoring rule changed', ts: now() });
+    createUser(params, authorization) {
+      return db.transaction(() => {
+        const denied = ruleAuthorization(authorization);
+        if (denied) return denied;
+        if (stmt.getUser.get(params.userId)) return { ok: false, status: 409, reason: 'User already monitored; edit the existing rule with its current revision' };
+        return { ok: true, user: writeUser(params) };
       }).immediate();
-      return stmt.getUser.get(userId);
     },
+    updateUser(params, ruleRevision, authorization) {
+      return db.transaction(() => {
+        const denied = ruleAuthorization(authorization);
+        if (denied) return denied;
+        const current = stmt.getUser.get(params.userId);
+        if (!current) return { ok: false, status: 404, reason: 'User not monitored' };
+        if (!ruleRevision || current.rule_revision !== ruleRevision) return { ok: false, status: 409, reason: 'Monitoring rule changed; refresh before editing' };
+        return { ok: true, user: writeUser({ email: current.email, username: current.username,
+          threshold: current.threshold, amount: current.amount, enabled: Boolean(current.enabled), mode: current.mode, note: current.note, ...params }) };
+      }).immediate();
+    },
+    removeUser(id, ruleRevision, authorization) {
+      return db.transaction(() => {
+        const denied = ruleAuthorization(authorization);
+        if (denied) return denied;
+        const current = stmt.getUser.get(id);
+        if (!current) return { ok: false, status: 404, reason: 'User not monitored' };
+        if (!ruleRevision || current.rule_revision !== ruleRevision) return { ok: false, status: 409, reason: 'Monitoring rule changed; refresh before deleting' };
+        stmt.deleteUser.run(id);
+        stmt.expireProposalsForUser.run({ user_id: id, note: 'user is no longer monitored', ts: now() });
+        return { ok: true };
+      }).immediate();
+    },
+    // Internal fixture/import primitive, not exposed through Web or CLI.
+    upsertUser(params) { return db.transaction(() => writeUser(params)).immediate(); },
     deleteUser: (id) => db.transaction(() => {
       const changes = stmt.deleteUser.run(id).changes;
       stmt.expireProposalsForUser.run({ user_id: id, note: 'user is no longer monitored', ts: now() });
       return changes;
     }).immediate(),
-    updateUserIdentity: (id, email, username = null) => stmt.updateUserIdentity.run(email ?? null, username, id).changes,
+    updateUserIdentity: (id, email, username = null, instance) => db.transaction(() => {
+      assertBinding(instance);
+      return stmt.updateUserIdentity.run(email ?? null, username, id).changes;
+    }).immediate(),
 
     // ---- proposals (approval mode) ----
-    createProposal({ id, userId, email, balance, threshold, amount, ruleRevision }) {
+    createProposal({ id, userId, email, balance, threshold, amount, ruleRevision, instance }) {
       return db.transaction(() => {
+        assertBinding(instance);
         const user = stmt.getUser.get(userId);
         if (!user?.enabled || user.mode !== 'approval' || user.rule_revision !== ruleRevision ||
             user.threshold !== threshold || user.amount !== amount) return null;
@@ -506,9 +607,13 @@ export function createStore(db) {
       const changes = stmt.decideProposal.run({ id, status, note: note || null, ts: now() }).changes;
       return changes ? stmt.getProposal.get(id) : null;
     },
-    claimProposal(id) {
-      const changes = stmt.claimProposal.run({ id, ts: now() }).changes;
-      return changes ? stmt.getProposal.get(id) : null;
+    claimProposal(id, instance, authorizeActor = null) {
+      return db.transaction(() => {
+        assertBinding(instance);
+        if (authorizeActor && !authorizeActor()) return null;
+        const changes = stmt.claimProposal.run({ id, ts: now() }).changes;
+        return changes ? stmt.getProposal.get(id) : null;
+      }).immediate();
     },
     completeProposal(id, status, note) {
       const changes = stmt.completeProposal.run({ id, status, note: note || null, ts: now() }).changes;
@@ -542,6 +647,7 @@ export function createStore(db) {
     // a second process cannot change rules/limits between these two operations.
     reserveTopup(record, authorize) {
       return db.transaction(() => {
+        assertBinding(record.instance);
         const decision = authorize();
         if (!decision.ok) return decision;
         stmt.insertTopup.run({
@@ -596,8 +702,9 @@ export function createStore(db) {
     },
     ledgerChecks: (recordId) => stmt.ledgerChecks.all(recordId).map(parseCheck),
     exportLedgerChecks: (recordId) => stmt.exportLedgerChecks.iterate(recordId),
-    resolveApplied({ recordId, verificationId, actor, lockToken }, authorizeActor = null) {
+    resolveApplied({ recordId, verificationId, actor, lockToken, instance }, authorizeActor = null) {
       return db.transaction(() => {
+        assertBinding(instance);
         if (authorizeActor && !authorizeActor()) return { ok: false, reason: 'operator authorization changed' };
         const record = stmt.getTopup.get(recordId);
         if (!record || !['pending', 'unknown', 'failed'].includes(record.status)) return { ok: false, reason: 'record is not unresolved' };
@@ -747,6 +854,9 @@ export function createStore(db) {
     },
     clearLoginAttempts: (ipHash) => stmt.clearLoginAttempts.run(ipHash).changes,
   };
+
+  if (bindingTarget) store.ensureInstanceBinding(bindingTarget);
+  return store;
 
   function insertCheck(record, { kind, outcome, actor, summary, providerReference = null, evidence }) {
     const id = crypto.randomUUID();

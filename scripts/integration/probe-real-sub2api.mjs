@@ -11,6 +11,7 @@ import { fileURLToPath } from 'node:url';
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 let stage = 'validate isolated input';
 let db;
+let faultDb;
 let proxy;
 let directory;
 try {
@@ -33,8 +34,8 @@ try {
   assert.equal(config.monitor.autoTopUpEnabled, true);
   directory = fs.mkdtempSync(path.join(os.tmpdir(), 'sentinel-real-probe-'));
   db = openDb(path.join(directory, 'ledger.db'));
-  const store = createStore(db);
   const client = new Sub2ApiClient({ baseUrl, adminKey });
+  const store = createStore(db, { instance: client });
   const monitor = new Monitor({ store, client, logger: { log() {}, warn() {}, error() {} } });
   const reconciler = new Reconciler({ store, client });
   const checks = [];
@@ -139,18 +140,22 @@ try {
   });
   await new Promise((resolve) => proxy.listen(0, '127.0.0.1', resolve));
   const proxyClient = new Sub2ApiClient({ baseUrl: `http://127.0.0.1:${proxy.address().port}`, adminKey });
+  // The fault-injection proxy has its own destination, so it must use its own
+  // disposable ledger rather than weakening the production instance binding.
+  faultDb = openDb(path.join(directory, 'fault-ledger.db'));
+  const faultStore = createStore(faultDb, { instance: proxyClient });
   const lost = users['lost-response'];
-  store.upsertUser({ userId: lost.id, email: lost.email, threshold: 200, amount: 10 });
-  const faultMonitor = new Monitor({ store, client: proxyClient, logger: { log() {}, warn() {}, error() {} } });
-  await faultMonitor.checkUser(store.getUser(lost.id));
-  const unknown = store.lastTopupForUser(lost.id);
+  faultStore.upsertUser({ userId: lost.id, email: lost.email, threshold: 200, amount: 10 });
+  const faultMonitor = new Monitor({ store: faultStore, client: proxyClient, logger: { log() {}, warn() {}, error() {} } });
+  await faultMonitor.checkUser(faultStore.getUser(lost.id));
+  const unknown = faultStore.lastTopupForUser(lost.id);
   assert.equal(responsesDropped, 1);
   assert.equal(unknown.status, 'unknown');
   assert.equal((await client.getUser(lost.id)).balance, 15);
-  await faultMonitor.checkUser(store.getUser(lost.id));
+  await faultMonitor.checkUser(faultStore.getUser(lost.id));
   assert.equal(writeCount, 1, 'unknown must block another credit even while below threshold');
-  assert.equal(store.countTopupRecords({ userId: lost.id }), 1);
-  const faultReconciler = new Reconciler({ store, client: proxyClient });
+  assert.equal(faultStore.countTopupRecords({ userId: lost.id }), 1);
+  const faultReconciler = new Reconciler({ store: faultStore, client: proxyClient });
   const resolved = await faultReconciler.resolveApplied(unknown.id, 'integration-operator');
   assert.equal(resolved.ok, true);
   assert.equal(resolved.record.status, 'success');
@@ -163,14 +168,16 @@ try {
 
   stage = 'persisted evidence';
   const reopened = openDb(path.join(directory, 'ledger.db'));
+  const faultReopened = openDb(path.join(directory, 'fault-ledger.db'));
   try {
     const persisted = createStore(reopened);
-    assert.equal(persisted.getTopup(unknown.id).status, 'success');
-    assert.equal(persisted.getTopup(unknown.id).error, unknown.error);
-    assert.ok(persisted.ledgerChecks(unknown.id).some((check) => check.kind === 'resolution_applied'));
+    const faultPersisted = createStore(faultReopened);
+    assert.equal(faultPersisted.getTopup(unknown.id).status, 'success');
+    assert.equal(faultPersisted.getTopup(unknown.id).error, unknown.error);
+    assert.ok(faultPersisted.ledgerChecks(unknown.id).some((check) => check.kind === 'resolution_applied'));
     assert.equal(persisted.getTopup(automaticRecord.id).reconciled, 1);
-    assert.equal(persisted.countTopupRecords(), 3);
-  } finally { reopened.close(); }
+    assert.equal(persisted.countTopupRecords() + faultPersisted.countTopupRecords(), 3);
+  } finally { reopened.close(); faultReopened.close(); }
   passed('ledger and reconciliation evidence survive reopening SQLite', { ledgerRecords: 3 });
   process.stdout.write(JSON.stringify(checks));
 } catch (error) {
@@ -183,5 +190,6 @@ try {
     await new Promise((resolve) => proxy.close(resolve));
   }
   db?.close();
+  faultDb?.close();
   if (directory) fs.rmSync(directory, { recursive: true, force: true });
 }

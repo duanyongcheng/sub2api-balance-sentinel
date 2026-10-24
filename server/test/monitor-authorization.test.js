@@ -13,7 +13,7 @@ function setup(t, { mode = 'auto', pauseAt = 1 } = {}) {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'sentinel-authorize-'));
   const db = openDb(path.join(dir, 'shared.db'));
   const dbB = openDb(path.join(dir, 'shared.db'));
-  const store = createStore(db);
+  const store = createStore(db, { instance: { baseUrl: 'https://fixture.invalid' } });
   const other = createStore(dbB);
   let resume;
   let entered;
@@ -23,6 +23,7 @@ function setup(t, { mode = 'auto', pauseAt = 1 } = {}) {
   let writes = 0;
   let balance = 5;
   const client = {
+    baseUrl: 'https://fixture.invalid',
     async getUser(id) {
       reads += 1;
       if (reads === pauseAt) { entered(); await gate; }

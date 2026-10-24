@@ -87,11 +87,11 @@ h1 { font-size: 19px; margin: 0; font-weight: 650; letter-spacing: .2px; }
 .card { background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius); padding: 16px; }
 .form-row { display: flex; gap: 14px; align-items: flex-end; flex-wrap: wrap; margin-bottom: 18px; }
 .form-row label { display: flex; flex-direction: column; gap: 6px; font-size: 12px; color: var(--muted); }
-.form-row input {
+.form-row input, .form-row select {
   background: var(--bg); border: 1px solid var(--border); color: var(--text);
   padding: 8px 10px; border-radius: 7px; font-size: 13px; width: 150px; font-variant-numeric: tabular-nums;
 }
-.form-row input:focus { outline: none; border-color: var(--accent); }
+.form-row input:focus, .form-row select:focus { outline: none; border-color: var(--accent); }
 .inline-edit { display: flex; align-items: flex-end; gap: 12px; flex-wrap: wrap; }
 .inline-edit label { display: grid; gap: 5px; color: var(--muted); font-size: 12px; }
 .inline-edit input { width: 140px; padding: 7px 9px; border: 1px solid var(--border); border-radius: 7px; background: var(--bg); color: var(--text); }
@@ -123,6 +123,8 @@ h1 { font-size: 19px; margin: 0; font-weight: 650; letter-spacing: .2px; }
 
 .recon-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; flex-wrap: wrap; gap: 12px; }
 .reconciliation-hint { margin-bottom: 14px; }
+.ledger-filters input { width: 210px; }
+.ledger-pagination { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 14px; }
 .table-scroll { max-width: 100%; overflow-x: auto; }
 .table-scroll .table { min-width: 1080px; }
 .evidence-panel { margin-top: 20px; overflow-wrap: anywhere; }

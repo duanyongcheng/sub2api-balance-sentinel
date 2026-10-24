@@ -99,6 +99,7 @@ const requireTotp = bool('AUTH_REQUIRE_TOTP', false, true);
 export const config = {
   // Where the sub2api deployment lives, e.g. http://127.0.0.1:8080
   baseUrl,
+  instanceId: text('SENTINEL_INSTANCE_ID'),
   adminKey,
   dbPath: process.env.SENTINEL_DB_PATH || path.join(ROOT, 'data', 'sentinel.db'),
 

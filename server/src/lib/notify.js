@@ -1,5 +1,47 @@
 import { config } from '../config.js';
 
+const MAX_RESPONSE_BYTES = 65_536;
+const ERROR_SETTING = 'notify_error_last';
+
+async function readAcknowledgement(response) {
+  const length = Number(response.headers.get('content-length'));
+  if (Number.isFinite(length) && length > MAX_RESPONSE_BYTES) {
+    await response.body?.cancel();
+    throw new Error('Notification response too large');
+  }
+  if (!response.body) return '';
+  const reader = response.body.getReader();
+  const chunks = [];
+  let total = 0;
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      total += value.byteLength;
+      if (total > MAX_RESPONSE_BYTES) {
+        await reader.cancel();
+        throw new Error('Notification response too large');
+      }
+      chunks.push(Buffer.from(value));
+    }
+    return Buffer.concat(chunks, total).toString('utf8');
+  } finally {
+    reader.releaseLock();
+  }
+}
+
+function acceptedAcknowledgement(format, text) {
+  if (format === 'slack') return text.trim() === 'ok';
+  let payload;
+  try { payload = JSON.parse(text); } catch { return false; }
+  if (!payload || typeof payload !== 'object' || Array.isArray(payload)) return false;
+
+  const expected = format === 'feishu' ? ['code', 'StatusCode'] : ['errcode'];
+  if (!expected.some((key) => Object.hasOwn(payload, key))) return false;
+  // Do not let a legacy success field override an explicit failure field.
+  return ['errcode', 'code', 'StatusCode'].every((key) => !Object.hasOwn(payload, key) || payload[key] === 0);
+}
+
 /**
  * Outbound notifications.
  *
@@ -63,15 +105,21 @@ export class Notifier {
         this.#logOnce('warn', `notification endpoint returned HTTP ${res.status}`, meta);
         return false;
       }
-      // WeCom/Feishu return 200 with errcode != 0 on failure.
-      const payload = await res.json().catch(() => null);
-      if (payload && (payload.errcode ?? 0) !== 0) {
-        this.#logOnce('warn', `notification rejected with code ${String(payload.errcode).slice(0, 40)}`, meta);
-        return false;
+      if (['wecom', 'dingtalk', 'feishu', 'slack'].includes(this.format)) {
+        const text = await readAcknowledgement(res);
+        if (!acceptedAcknowledgement(this.format, text)) {
+          this.#logOnce('warn', 'notification endpoint rejected or returned an invalid acknowledgement', meta);
+          return false;
+        }
+      } else {
+        // Generic endpoints promise HTTP success, not a provider-specific body.
+        await res.body?.cancel().catch(() => {});
       }
+      try { this.store?.setSetting(ERROR_SETTING, ''); } catch { /* Logging must not affect delivery. */ }
       return true;
-    } catch (err) {
-      this.#logOnce('warn', `notification delivery failed: ${String(err.name || 'Error').slice(0, 40)}`, meta);
+    } catch {
+      // Transport errors and provider replies may contain the secret webhook URL.
+      this.#logOnce('warn', controller.signal.aborted ? 'notification delivery timed out' : 'notification delivery failed', meta);
       return false;
     } finally {
       clearTimeout(timer);
@@ -83,11 +131,15 @@ export class Notifier {
    * webhook cannot flood the ledger on every poll.
    */
   #logOnce(level, message, meta) {
-    const key = 'notify_error_last';
-    const last = this.store?.getSetting(key, '');
+    let last;
+    try { last = this.store?.getSetting(ERROR_SETTING, ''); } catch { /* Best-effort logging. */ }
     if (last === message) return;
-    this.store?.setSetting(key, message);
-    this.store?.log(level, 'notify_failed', message, meta.userId ?? null);
+    try {
+      this.store?.log(level, 'notify_failed', message, meta?.userId ?? null);
+    } catch {
+      return;
+    }
+    try { this.store?.setSetting(ERROR_SETTING, message); } catch { /* Best-effort throttling. */ }
   }
 
   // ---- message builders ----
