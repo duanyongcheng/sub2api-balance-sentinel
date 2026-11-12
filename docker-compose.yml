@@ -26,7 +26,7 @@ services:
     #
     # To use a different host port, set SENTINEL_PORT in .env (or the shell).
     ports:
-      - "127.0.0.1:${SENTINEL_PORT:-7788}:7788"
+      - "${SENTINEL_PORT:-7788}:7788"
 
     env_file:
       - .env
