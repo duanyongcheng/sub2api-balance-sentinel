@@ -1,0 +1,706 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-11-12T05:40:40+00:00",
+  "title": "Design System: sub2api 余额哨兵",
+  "extensions": {
+    "colorMeta": {
+      "railway-navy": {
+        "role": "primary",
+        "displayName": "Railway Navy",
+        "canonical": "#0e2a52",
+        "tonalRamp": [
+          "#020b1b",
+          "#15253e",
+          "#2c4363",
+          "#46628b",
+          "#6684af",
+          "#8da7cd",
+          "#b5cbeb",
+          "#def0ff"
+        ]
+      },
+      "navy-raised": {
+        "role": "primary",
+        "displayName": "Raised Navy",
+        "canonical": "#163a6b",
+        "tonalRamp": [
+          "#010b1e",
+          "#102542",
+          "#274269",
+          "#406293",
+          "#6084b7",
+          "#88a7d4",
+          "#b1cbf1",
+          "#dbf0ff"
+        ]
+      },
+      "navy-rule": {
+        "role": "primary",
+        "displayName": "Navy Rule",
+        "canonical": "#29497a",
+        "tonalRamp": [
+          "#020a1e",
+          "#132541",
+          "#2a4268",
+          "#436291",
+          "#6383b5",
+          "#8aa7d2",
+          "#b3cbf0",
+          "#ddf0ff"
+        ]
+      },
+      "navy-ink": {
+        "role": "primary",
+        "displayName": "Board White",
+        "canonical": "#ffffff",
+        "tonalRamp": [
+          "#0b0b0b",
+          "#252525",
+          "#424242",
+          "#616161",
+          "#828282",
+          "#a5a5a5",
+          "#c9c9c9",
+          "#eeeeee"
+        ]
+      },
+      "navy-ink-2": {
+        "role": "primary",
+        "displayName": "Pale Steel",
+        "canonical": "#c3d1e6",
+        "tonalRamp": [
+          "#070b12",
+          "#1f252f",
+          "#3a4350",
+          "#576273",
+          "#778395",
+          "#9ba6b6",
+          "#c1cad7",
+          "#e8effa"
+        ]
+      },
+      "navy-ink-3": {
+        "role": "primary",
+        "displayName": "Muted Steel",
+        "canonical": "#93a8c8",
+        "tonalRamp": [
+          "#050b16",
+          "#1b2535",
+          "#354358",
+          "#51627d",
+          "#7183a0",
+          "#96a6bf",
+          "#bccadf",
+          "#e4efff"
+        ]
+      },
+      "signal-yellow": {
+        "role": "secondary",
+        "displayName": "Signal Yellow",
+        "canonical": "#f2b705",
+        "tonalRamp": [
+          "#1a0500",
+          "#3c1d00",
+          "#613800",
+          "#885600",
+          "#ac7800",
+          "#ca9e34",
+          "#e9c476",
+          "#ffebb0"
+        ]
+      },
+      "signal-yellow-hover": {
+        "role": "secondary",
+        "displayName": "Lit Signal",
+        "canonical": "#ffc61a",
+        "tonalRamp": [
+          "#1a0500",
+          "#3b1d00",
+          "#603900",
+          "#875700",
+          "#ab7900",
+          "#c99f2d",
+          "#e8c573",
+          "#ffecae"
+        ]
+      },
+      "signal-ink": {
+        "role": "secondary",
+        "displayName": "Signal Ink",
+        "canonical": "#1b1600",
+        "tonalRamp": [
+          "#0d0b03",
+          "#282516",
+          "#46422e",
+          "#676249",
+          "#888369",
+          "#aaa68f",
+          "#cdcab7",
+          "#f2efe0"
+        ]
+      },
+      "danger": {
+        "role": "tertiary",
+        "displayName": "Alarm Red",
+        "canonical": "#c22f35",
+        "tonalRamp": [
+          "#260000",
+          "#500004",
+          "#7d0d18",
+          "#ad272d",
+          "#d54f4e",
+          "#f27e78",
+          "#ffaba4",
+          "#ffd7d1"
+        ]
+      },
+      "danger-fill": {
+        "role": "tertiary",
+        "displayName": "Alarm Fill",
+        "canonical": "#d93a3f",
+        "tonalRamp": [
+          "#280000",
+          "#520002",
+          "#800013",
+          "#b11d28",
+          "#da4949",
+          "#f67a75",
+          "#ffa8a1",
+          "#ffd6cf"
+        ]
+      },
+      "danger-on-navy": {
+        "role": "tertiary",
+        "displayName": "Alarm on Navy",
+        "canonical": "#ff8a8d",
+        "tonalRamp": [
+          "#210002",
+          "#470a12",
+          "#712229",
+          "#9e3b42",
+          "#c55e62",
+          "#e28889",
+          "#ffb2b2",
+          "#ffdddc"
+        ]
+      },
+      "danger-tint": {
+        "role": "tertiary",
+        "displayName": "Alarm Tint",
+        "canonical": "#fdeced",
+        "tonalRamp": [
+          "#0f0a0a",
+          "#2b2323",
+          "#493f40",
+          "#6b5d5e",
+          "#8c7e7f",
+          "#aea2a2",
+          "#d1c6c7",
+          "#f4eced"
+        ]
+      },
+      "ok": {
+        "role": "tertiary",
+        "displayName": "Running Green",
+        "canonical": "#18744a",
+        "tonalRamp": [
+          "#001104",
+          "#002e18",
+          "#094f30",
+          "#22724b",
+          "#48946b",
+          "#77b591",
+          "#a4d7b8",
+          "#d2fae1"
+        ]
+      },
+      "ok-on-navy": {
+        "role": "tertiary",
+        "displayName": "Running on Navy",
+        "canonical": "#5fd59a",
+        "tonalRamp": [
+          "#001302",
+          "#003114",
+          "#00522c",
+          "#007646",
+          "#259966",
+          "#64ba8c",
+          "#97dbb5",
+          "#c9fdde"
+        ]
+      },
+      "ok-tint": {
+        "role": "tertiary",
+        "displayName": "Running Tint",
+        "canonical": "#e6f5ec",
+        "tonalRamp": [
+          "#080c0a",
+          "#202723",
+          "#3b453f",
+          "#59655e",
+          "#79867e",
+          "#9da8a2",
+          "#c3ccc6",
+          "#e9f1ec"
+        ]
+      },
+      "caution": {
+        "role": "tertiary",
+        "displayName": "Caution Amber",
+        "canonical": "#855800",
+        "tonalRamp": [
+          "#170700",
+          "#381f00",
+          "#5b3a00",
+          "#815811",
+          "#a57939",
+          "#c49e6a",
+          "#e3c499",
+          "#ffeac9"
+        ]
+      },
+      "caution-fill": {
+        "role": "tertiary",
+        "displayName": "Caution Fill",
+        "canonical": "#d08a0c",
+        "tonalRamp": [
+          "#1c0400",
+          "#3f1a00",
+          "#653500",
+          "#8e5100",
+          "#b27300",
+          "#d0994e",
+          "#eec085",
+          "#ffe8bb"
+        ]
+      },
+      "caution-tint": {
+        "role": "tertiary",
+        "displayName": "Caution Tint",
+        "canonical": "#fdf3d8",
+        "tonalRamp": [
+          "#0e0b04",
+          "#292518",
+          "#484230",
+          "#69614b",
+          "#8a826b",
+          "#aca591",
+          "#cfc9b8",
+          "#f3eee1"
+        ]
+      },
+      "caution-on-navy": {
+        "role": "tertiary",
+        "displayName": "Caution on Navy",
+        "canonical": "#f5a35c",
+        "tonalRamp": [
+          "#1d0200",
+          "#411700",
+          "#683100",
+          "#914d00",
+          "#b66f2b",
+          "#d49561",
+          "#f2bd92",
+          "#ffe5c4"
+        ]
+      },
+      "ground": {
+        "role": "neutral",
+        "displayName": "Cool Ground",
+        "canonical": "#f2f4f8",
+        "tonalRamp": [
+          "#0b0b0c",
+          "#242527",
+          "#414244",
+          "#606164",
+          "#818286",
+          "#a3a5a8",
+          "#c8c9cb",
+          "#edeef0"
+        ]
+      },
+      "panel": {
+        "role": "neutral",
+        "displayName": "Panel White",
+        "canonical": "#ffffff",
+        "tonalRamp": [
+          "#0b0b0b",
+          "#252525",
+          "#424242",
+          "#616161",
+          "#828282",
+          "#a5a5a5",
+          "#c9c9c9",
+          "#eeeeee"
+        ]
+      },
+      "panel-sunk": {
+        "role": "neutral",
+        "displayName": "Sunk Panel",
+        "canonical": "#f7f8fb",
+        "tonalRamp": [
+          "#0b0b0c",
+          "#242526",
+          "#414244",
+          "#606163",
+          "#818285",
+          "#a4a5a7",
+          "#c8c9cb",
+          "#eeeef0"
+        ]
+      },
+      "ink": {
+        "role": "neutral",
+        "displayName": "Ink",
+        "canonical": "#13203a",
+        "tonalRamp": [
+          "#060b16",
+          "#1c2536",
+          "#364258",
+          "#52617e",
+          "#7383a0",
+          "#97a6c0",
+          "#becae0",
+          "#e5efff"
+        ]
+      },
+      "ink-2": {
+        "role": "neutral",
+        "displayName": "Ink 2",
+        "canonical": "#44526b",
+        "tonalRamp": [
+          "#060b15",
+          "#1d2533",
+          "#384255",
+          "#54627a",
+          "#75839c",
+          "#99a6bc",
+          "#bfcadc",
+          "#e6effe"
+        ]
+      },
+      "ink-3": {
+        "role": "neutral",
+        "displayName": "Ink 3",
+        "canonical": "#5f6c84",
+        "tonalRamp": [
+          "#070b14",
+          "#1e2532",
+          "#394253",
+          "#566277",
+          "#76839a",
+          "#9aa6ba",
+          "#c0cadb",
+          "#e7effd"
+        ]
+      },
+      "rule": {
+        "role": "neutral",
+        "displayName": "Rule",
+        "canonical": "#d8dee8",
+        "tonalRamp": [
+          "#090b0e",
+          "#22252a",
+          "#3e4248",
+          "#5d6169",
+          "#7e838b",
+          "#a1a5ad",
+          "#c6c9d0",
+          "#eceff4"
+        ]
+      },
+      "rule-soft": {
+        "role": "neutral",
+        "displayName": "Soft Rule",
+        "canonical": "#e8ecf2",
+        "tonalRamp": [
+          "#0a0b0d",
+          "#232528",
+          "#404246",
+          "#5e6166",
+          "#7f8387",
+          "#a2a5aa",
+          "#c7c9cd",
+          "#edeff1"
+        ]
+      },
+      "focus": {
+        "role": "neutral",
+        "displayName": "Focus Blue",
+        "canonical": "#2f6fdb",
+        "tonalRamp": [
+          "#00052f",
+          "#001f5b",
+          "#0d3c8a",
+          "#215bbd",
+          "#437fe4",
+          "#71a5fc",
+          "#9ecaff",
+          "#cdf0ff"
+        ]
+      },
+      "select": {
+        "role": "neutral",
+        "displayName": "Selection Blue",
+        "canonical": "#dce7fa",
+        "tonalRamp": [
+          "#080b11",
+          "#20252e",
+          "#3b424e",
+          "#596271",
+          "#7a8393",
+          "#9da5b3",
+          "#c3c9d5",
+          "#e9eff8"
+        ]
+      }
+    },
+    "typographyMeta": {
+      "display": {
+        "displayName": "Tally",
+        "purpose": "The action board tally count only; 80px below 1200px."
+      },
+      "figure-lg": {
+        "displayName": "Figure Large",
+        "purpose": "Owed and reconciliation totals; 40px below 640px."
+      },
+      "figure-md": {
+        "displayName": "Figure Medium",
+        "purpose": "Board times and amounts; 20px below 960px."
+      },
+      "headline": {
+        "displayName": "Headline",
+        "purpose": "Login and enrollment card titles."
+      },
+      "title": {
+        "displayName": "Title",
+        "purpose": "Panel heads and the board matter line."
+      },
+      "body": {
+        "displayName": "Body",
+        "purpose": "Default text and inputs; tables and strips use body-sm."
+      },
+      "body-sm": {
+        "displayName": "Body Small",
+        "purpose": "Tables, strips, buttons, toasts."
+      },
+      "label": {
+        "displayName": "Label",
+        "purpose": "Table heads, field labels, badges, metadata."
+      },
+      "mono": {
+        "displayName": "Mono",
+        "purpose": "Verification evidence, digests, enrollment secrets."
+      }
+    },
+    "shadows": [
+      {
+        "name": "toast",
+        "value": "0 8px 24px rgba(14, 42, 82, .28)",
+        "purpose": "Transient bottom-centre confirmation."
+      },
+      {
+        "name": "dialog",
+        "value": "0 24px 64px rgba(14, 42, 82, .35)",
+        "purpose": "Credential dialog over a 60% navy scrim."
+      },
+      {
+        "name": "focus-halo",
+        "value": "0 0 0 3px rgba(47, 111, 219, .18)",
+        "purpose": "Focused inputs, with a focus-blue border."
+      }
+    ],
+    "motion": [
+      {
+        "name": "ease",
+        "value": "cubic-bezier(.16, 1, .3, 1)",
+        "purpose": "Single ease-out curve for all transitions."
+      },
+      {
+        "name": "state",
+        "value": "150ms",
+        "purpose": "Colour and border transitions on buttons, tabs, inputs."
+      },
+      {
+        "name": "chevron",
+        "value": "200ms",
+        "purpose": "Disclosure chevron rotation."
+      },
+      {
+        "name": "toast-in",
+        "value": "200ms",
+        "purpose": "Toast rises 8px and fades in."
+      },
+      {
+        "name": "gauge",
+        "value": "300ms",
+        "purpose": "Gauge fill width change."
+      },
+      {
+        "name": "board-arrive",
+        "value": "1600ms",
+        "purpose": "One-time 28% signal-yellow wash on a newly arrived board row."
+      },
+      {
+        "name": "reduced-motion",
+        "value": "0.01ms",
+        "purpose": "All animation and transition collapse under prefers-reduced-motion."
+      }
+    ],
+    "breakpoints": [
+      {
+        "name": "board-stack",
+        "value": "1200px"
+      },
+      {
+        "name": "shell-static",
+        "value": "960px"
+      },
+      {
+        "name": "card-tables",
+        "value": "640px"
+      }
+    ]
+  },
+  "components": [
+    {
+      "name": "Default Button",
+      "kind": "button",
+      "refersTo": "button-default",
+      "description": "Quiet white button for ordinary actions on light ground.",
+      "html": "<button class=\"ds-btn\">导出待收 CSV</button>",
+      "css": ".ds-btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;min-height:34px;padding:6px 14px;border:1px solid #d8dee8;border-radius:2px;background:#fff;color:#13203a;font:500 13px/1.2 \"PingFang SC\",system-ui,sans-serif;cursor:pointer;transition:background-color .15s cubic-bezier(.16,1,.3,1),border-color .15s cubic-bezier(.16,1,.3,1)}.ds-btn:hover{border-color:#b4bfcf;background:#f7f8fb}.ds-btn:active{background:#e8ecf2}.ds-btn:focus-visible{outline:2px solid #2f6fdb;outline-offset:2px}"
+    },
+    {
+      "name": "Primary Button",
+      "kind": "button",
+      "refersTo": "button-primary",
+      "description": "Navy button for the main forward action on light ground.",
+      "html": "<button class=\"ds-btn-primary\">去对账收款</button>",
+      "css": ".ds-btn-primary{display:inline-flex;align-items:center;min-height:34px;padding:6px 14px;border:1px solid #0e2a52;border-radius:2px;background:#0e2a52;color:#fff;font:500 13px/1.2 \"PingFang SC\",system-ui,sans-serif;cursor:pointer;transition:background-color .15s cubic-bezier(.16,1,.3,1)}.ds-btn-primary:hover{background:#163a6b;border-color:#163a6b}.ds-btn-primary:focus-visible{outline:2px solid #2f6fdb;outline-offset:2px}"
+    },
+    {
+      "name": "Signal Button",
+      "kind": "button",
+      "refersTo": "button-signal",
+      "description": "Yellow approve action, only for things waiting on the operator.",
+      "html": "<button class=\"ds-btn-signal\">批准并加额</button>",
+      "css": ".ds-btn-signal{display:inline-flex;align-items:center;min-height:34px;padding:6px 14px;border:1px solid #f2b705;border-radius:2px;background:#f2b705;color:#1b1600;font:600 13px/1.2 \"PingFang SC\",system-ui,sans-serif;cursor:pointer;transition:background-color .15s cubic-bezier(.16,1,.3,1)}.ds-btn-signal:hover{background:#ffc61a;border-color:#ffc61a}.ds-btn-signal:focus-visible{outline:2px solid #2f6fdb;outline-offset:2px}"
+    },
+    {
+      "name": "Danger Button",
+      "kind": "button",
+      "refersTo": "button-danger",
+      "description": "Red-outlined destructive or alarm action.",
+      "html": "<button class=\"ds-btn-danger\">急停</button>",
+      "css": ".ds-btn-danger{display:inline-flex;align-items:center;min-height:34px;padding:6px 14px;border:1px solid #eaa9ab;border-radius:2px;background:#fff;color:#c22f35;font:500 13px/1.2 \"PingFang SC\",system-ui,sans-serif;cursor:pointer;transition:background-color .15s cubic-bezier(.16,1,.3,1),border-color .15s cubic-bezier(.16,1,.3,1)}.ds-btn-danger:hover{background:#fdeced;border-color:#c22f35}.ds-btn-danger:focus-visible{outline:2px solid #2f6fdb;outline-offset:2px}"
+    },
+    {
+      "name": "Field",
+      "kind": "input",
+      "refersTo": "input",
+      "description": "Labelled input with focus-blue border and soft halo.",
+      "html": "<label class=\"ds-field\">阈值<input class=\"ds-input\" value=\"10.00\"></label>",
+      "css": ".ds-field{display:grid;gap:6px;font:12px/1.5 \"PingFang SC\",system-ui,sans-serif;color:#44526b}.ds-input{width:168px;min-height:34px;padding:6px 10px;border:1px solid #d8dee8;border-radius:2px;background:#fff;color:#13203a;font:14px \"Fira Sans Condensed\",\"PingFang SC\",system-ui,sans-serif;font-variant-numeric:tabular-nums;transition:border-color .15s,box-shadow .15s}.ds-input:hover{border-color:#b4bfcf}.ds-input:focus{outline:none;border-color:#2f6fdb;box-shadow:0 0 0 3px rgba(47,111,219,.18)}"
+    },
+    {
+      "name": "Shell Tabs",
+      "kind": "nav",
+      "refersTo": "shell",
+      "description": "Navy tab bar with white active underline and yellow pending counts.",
+      "html": "<nav class=\"ds-tabs\"><button class=\"ds-tab is-active\">总览</button><button class=\"ds-tab\">待审批 <span class=\"ds-count\">2</span></button><button class=\"ds-tab\">加额流水</button></nav>",
+      "css": ".ds-tabs{display:flex;gap:4px;background:#0e2a52;padding:0 16px}.ds-tab{display:inline-flex;align-items:center;gap:8px;padding:10px 14px 12px;border:0;border-bottom:2px solid transparent;background:none;color:#c3d1e6;font:14px \"PingFang SC\",system-ui,sans-serif;cursor:pointer;transition:color .15s,border-color .15s}.ds-tab:hover{color:#fff}.ds-tab.is-active{color:#fff;border-bottom-color:#fff;font-weight:600}.ds-tab:focus-visible{outline:2px solid #fff;outline-offset:-4px}.ds-count{min-width:20px;padding:0 6px;border-radius:2px;background:#f2b705;color:#1b1600;font:600 12px/18px \"Fira Sans Condensed\",sans-serif;text-align:center}"
+    },
+    {
+      "name": "Status Badges",
+      "kind": "chip",
+      "refersTo": "badge-ok",
+      "description": "Tinted state badges with AA-safe text values.",
+      "html": "<span class=\"ds-badge ds-ok\">正常</span> <span class=\"ds-badge ds-caution\">低于阈值</span> <span class=\"ds-badge ds-danger\">待核实 · 已拦截</span> <span class=\"ds-badge ds-muted\">未核对</span>",
+      "css": ".ds-badge{display:inline-block;padding:1px 7px;border:1px solid #d8dee8;border-radius:2px;font:500 12px/18px \"PingFang SC\",system-ui,sans-serif;white-space:nowrap}.ds-ok{color:#18744a;border-color:#a9dbbf;background:#e6f5ec}.ds-caution{color:#855800;border-color:#e7cd85;background:#fdf3d8}.ds-danger{color:#c22f35;border-color:#f0b0b2;background:#fdeced}.ds-muted{color:#5f6c84;background:#f7f8fb}"
+    },
+    {
+      "name": "Action Board Row",
+      "kind": "custom",
+      "refersTo": "action-board",
+      "description": "Signature navy timetable row: time, user, matter, amount, state, action.",
+      "html": "<div class=\"ds-board\"><div class=\"ds-row\"><span class=\"ds-time\">12:06</span><span class=\"ds-user\">#1<small>alice@relay.cn</small></span><span class=\"ds-what\">余额 3.20，低于阈值 10.00<small>加后预计 103.20</small></span><span class=\"ds-amt\">+100.00</span><span class=\"ds-state\">待审批</span><button class=\"ds-approve\">批准并加额</button></div></div>",
+      "css": ".ds-board{background:#0e2a52;color:#fff;border-radius:2px;font-family:\"PingFang SC\",system-ui,sans-serif}.ds-row{display:grid;grid-template-columns:72px 120px minmax(0,1fr) 112px 84px auto;column-gap:16px;align-items:center;min-height:76px;padding:12px 24px;border-bottom:1px solid #29497a;transition:background .15s}.ds-row:hover{background:#163a6b}.ds-time,.ds-amt{font:500 26px/1.1 \"Fira Sans Condensed\",sans-serif;font-variant-numeric:tabular-nums}.ds-time{color:#c3d1e6}.ds-amt{text-align:right}.ds-user{display:grid;font:600 22px/1.3 \"Fira Sans Condensed\",sans-serif}.ds-user small,.ds-what small{display:block;font:12px \"PingFang SC\",sans-serif;color:#93a8c8}.ds-what{font-size:15px}.ds-state{font-size:20px;font-weight:600;letter-spacing:.06em;color:#f2b705}.ds-approve{min-height:34px;padding:6px 14px;border:1px solid #f2b705;border-radius:2px;background:#f2b705;color:#1b1600;font:600 13px \"PingFang SC\",sans-serif;cursor:pointer}.ds-approve:hover{background:#ffc61a}.ds-approve:focus-visible{outline:2px solid #fff;outline-offset:2px}"
+    },
+    {
+      "name": "Balance Gauge",
+      "kind": "custom",
+      "description": "Fixed-ramp gauge: empty at 0, full at threshold + amount, ink tick at threshold.",
+      "html": "<div class=\"ds-gauges\"><span class=\"ds-gauge\"><span class=\"ds-fill\" style=\"width:61%\"></span><span class=\"ds-tick\" style=\"left:50%\"></span></span><span class=\"ds-gauge is-low\"><span class=\"ds-fill\" style=\"width:15%\"></span><span class=\"ds-tick\" style=\"left:37%\"></span></span><span class=\"ds-gauge is-blocked\"><span class=\"ds-fill\" style=\"width:2%\"></span><span class=\"ds-tick\" style=\"left:9%\"></span></span><span class=\"ds-gauge is-empty\"><span class=\"ds-tick\" style=\"left:20%\"></span></span></div>",
+      "css": ".ds-gauges{display:grid;gap:16px;width:240px}.ds-gauge{position:relative;display:block;height:8px;background:#e8ecf2}.ds-fill{position:absolute;inset:0 auto 0 0;background:#0e2a52;transition:width .3s cubic-bezier(.16,1,.3,1)}.ds-tick{position:absolute;top:-4px;bottom:-4px;width:2px;margin-left:-1px;background:#13203a}.is-low .ds-fill{background:#d08a0c}.is-blocked .ds-fill{background:#d93a3f}.ds-gauge.is-empty{background:repeating-linear-gradient(90deg,#e8ecf2 0 6px,transparent 6px 10px)}"
+    },
+    {
+      "name": "Panel",
+      "kind": "card",
+      "refersTo": "panel",
+      "description": "White panel with 1px rule, head and figure body.",
+      "html": "<section class=\"ds-panel\"><header class=\"ds-head\"><h2>待收款</h2><span>已确认到账、尚未收回</span></header><div class=\"ds-body\"><div class=\"ds-total\">200.00</div><p>2 位用户 · 2 笔</p></div></section>",
+      "css": ".ds-panel{width:320px;background:#fff;border:1px solid #d8dee8;border-radius:2px;font-family:\"PingFang SC\",system-ui,sans-serif;color:#13203a}.ds-head{display:flex;align-items:baseline;gap:12px;padding:14px 20px;border-bottom:1px solid #d8dee8}.ds-head h2{margin:0;font-size:15px;font-weight:600}.ds-head span,.ds-body p{font-size:12px;color:#5f6c84;margin:0}.ds-body{padding:20px}.ds-total{font:500 52px/1.05 \"Fira Sans Condensed\",sans-serif;letter-spacing:-.01em;font-variant-numeric:tabular-nums}"
+    }
+  ],
+  "narrative": {
+    "northStar": "The Departure Board",
+    "overview": "The console reads like a station departure board. Railway navy owns the frame: the top bar and the action board, where a large signal-yellow count says how many things wait for the operator and timetable rows say what each one is. Everything below the board is a cool light working ground with white panels, set dense and quiet, so that the board stays the loudest thing on any screen.\n\nHierarchy comes from scale contrast and colour discipline, not from decoration. Times, user IDs and money are set in a condensed face with tabular figures so columns align like a printed timetable; Chinese text runs in the system 黑体 stack. One rule weight, three ink values, 2px corners, and no decorative shadow keep the surface flat and legible. Colour is semantic before it is atmospheric: yellow means \"your hand is needed\", red means unknown or critical, green means running or settled, amber means below threshold or stale.\n\nThe system rejects the category default of a KPI-card row over tabs and grey tables. A dashboard tile grid is the thing this board replaces.",
+    "keyCharacteristics": [
+      "Navy frame (shell, action board, login gate) over a cool light ground with white panels.",
+      "Signal yellow reserved for things awaiting the operator.",
+      "Tabular condensed figures for every time, ID and amount.",
+      "One 1px rule weight, 2px corners, flat surfaces.",
+      "Dense, desktop-first tables that restack into cards on phones."
+    ],
+    "rules": [
+      {
+        "name": "The Operator's Hand Rule",
+        "body": "Signal yellow appears only on things awaiting the operator: pending counts, approve actions, the tally number. Never use it for decoration, branding, or general emphasis.",
+        "section": "colors"
+      },
+      {
+        "name": "The Two-Variant Rule",
+        "body": "Every state colour has a dark text value tuned for WCAG AA on its own tint (ok, danger, caution) and a brighter value for fills and navy (ok-on-navy, danger-fill / danger-on-navy, caution-fill / caution-on-navy). Text on a light tint always takes the dark value.",
+        "section": "colors"
+      },
+      {
+        "name": "The Uncertainty Is Red Rule",
+        "body": "Unknown and blocked are alarm red, never caution amber and never neutral grey; uncertainty must look different from success and from failure.",
+        "section": "colors"
+      },
+      {
+        "name": "The Tabular Figures Rule",
+        "body": "Every time, user ID and amount takes the figures face with `tnum` and `lnum` on. A face that ships no true tabular figures is not eligible, however well it fits otherwise (Barlow Semi Condensed was rejected for this).",
+        "section": "typography"
+      },
+      {
+        "name": "The Scale Contrast Rule",
+        "body": "Hierarchy is carried by size jumps between figures and labels (112 / 52 / 26 against 12-14), not by colour fills, cards, or extra weights.",
+        "section": "typography"
+      },
+      {
+        "name": "The Flat Board Rule",
+        "body": "Panels, the board, strips and buttons never cast shadows. Shadow means \"this floats above the page right now\", and only toasts and modal dialogs float.",
+        "section": "elevation"
+      }
+    ],
+    "dos": [
+      "Do keep signal yellow for things waiting on the operator: tab counts, approve buttons, the tally, the 待审批 state.",
+      "Do set every time, ID and amount in Fira Sans Condensed with `tnum` and `lnum` on, and right-align money columns.",
+      "Do use the dark text values (ok #18744a, danger #c22f35, caution #855800) on their tints, and the brighter variants only for fills and on navy.",
+      "Do use one 1px rule weight and the single 2px corner on every container, button, badge and input.",
+      "Do show unknown and blocked in alarm red, and missing data as a dashed or muted state, never as success.",
+      "Do restack wide tables into labelled cards below 640px rather than shrinking text.",
+      "Do keep motion short and functional (0.15s state transitions on the ease-out curve), and honour reduced motion."
+    ],
+    "donts": [
+      "Don't build a KPI-card row over tabs and grey tables; the action board is the summary.",
+      "Don't use signal yellow for decoration, branding, highlights or general warnings.",
+      "Don't add decorative shadows to panels, the board, strips or buttons; only toasts and modal dialogs float.",
+      "Don't round corners past 2px or introduce pill and circular shapes.",
+      "Don't use a figures face without true tabular figures.",
+      "Don't expand more than one board row at a time."
+    ]
+  }
+}
